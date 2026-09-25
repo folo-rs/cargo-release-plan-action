@@ -35,3 +35,17 @@ Maintainer documentation describes the [design](docs/design.md) and
 [implementation](docs/implementation.md).
 
 Licensed under [MIT](LICENSE).
+
+## Source dogfooding
+
+The root composite currently exposes `version` and `version-readiness`. Source
+mode builds `packages/cargo-release-plan` from the selected Folo checkout using
+the pinned installation compiler, independently of a consumer toolchain override.
+It checks the executable's exact `--version` and adds its installation directory
+to `PATH`. `version-readiness` requires a full immutable `base` SHA and does not
+run the full pull-request gate.
+
+`install-method: install` and the default `binstall` remain blocked until the
+root `release.json` pins the finalized application. The manifest under
+`tests/fixtures` is only a unit-test fixture; its old published version does not
+claim support for the unified protocol. It is never a production fallback.

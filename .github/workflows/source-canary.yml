@@ -1,0 +1,61 @@
+name: Source installation canary
+
+on:
+  push:
+    branches: [main, sandersaares-reusable-release-action]
+    paths:
+      - action.yml
+      - scripts/**
+      - tests/**
+      - .github/workflows/source-canary.yml
+  pull_request:
+    paths:
+      - action.yml
+      - scripts/**
+      - tests/**
+      - .github/workflows/source-canary.yml
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: folo-rs/folo
+          # This source checkpoint restores --version; it is not a published tool pin.
+          ref: b36a7ebd683626eb71c8f87d834db5465d67cf9c
+          path: .source
+          persist-credentials: false
+      - uses: ./
+        id: tool
+        with:
+          command: version
+          install-method: path
+          source-path: .source
+          working-directory: tests/fixtures/consumer
+        env:
+          # The source compiler must not inherit the consumer's older override.
+          RUSTUP_TOOLCHAIN: 1.88.0
+      - name: Verify executable selection
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_VERSION: ${{ steps.tool.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:CRP_VERSION -ne '0.4.0') { throw 'Unexpected source tool version.' }
+          if ((Get-Command cargo-release-plan).Source -ne $env:CRP_EXECUTABLE) {
+              throw 'The verified executable was not added to PATH.'
+          }
+          & $env:CRP_EXECUTABLE --version
+          if ($LASTEXITCODE -ne 0) { throw 'Source executable cannot run.' }

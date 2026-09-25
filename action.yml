@@ -1,0 +1,73 @@
+name: Cargo release plan
+description: Install and invoke the exact cargo-release-plan selected by this action.
+inputs:
+  command:
+    description: Operation to execute (version or version-readiness).
+    required: true
+  working-directory:
+    description: Cargo workspace directory relative to the caller checkout.
+    default: .
+  config:
+    description: Publication configuration relative to the selected workspace.
+    default: .cargo/release_plan.toml
+  install-method:
+    description: binstall, install, or path. Released methods require release.json.
+    default: binstall
+  source-path:
+    description: Folo source checkout used only by path installation.
+    default: .
+  base:
+    description: Explicit immutable release baseline for version-readiness.
+    default: ''
+outputs:
+  executable:
+    description: Absolute path of the verified cargo-release-plan executable.
+    value: ${{ steps.install.outputs.executable }}
+  version:
+    description: Exact selected application version.
+    value: ${{ steps.install.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: Select installation
+      id: prepare
+      shell: pwsh
+      env:
+        CRP_ACTION_PATH: ${{ github.action_path }}
+        CRP_INSTALL_METHOD: ${{ inputs.install-method }}
+        CRP_SOURCE_PATH: ${{ inputs.source-path }}
+        CRP_COMMAND: ${{ inputs.command }}
+      run: |
+        & "$env:CRP_ACTION_PATH/scripts/Bootstrap.ps1" -Stage prepare
+    - uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      if: inputs.install-method != 'path'
+      id: cache
+      with:
+        path: ${{ steps.prepare.outputs.root }}
+        key: ${{ steps.prepare.outputs.cache-key }}
+    - name: Install and verify executable
+      id: install
+      shell: pwsh
+      env:
+        CRP_ACTION_PATH: ${{ github.action_path }}
+        CRP_INSTALL_METHOD: ${{ inputs.install-method }}
+        CRP_SOURCE_PATH: ${{ inputs.source-path }}
+        CRP_COMMAND: ${{ inputs.command }}
+      run: |
+        & "$env:CRP_ACTION_PATH/scripts/Bootstrap.ps1" -Stage install
+    - uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+      if: inputs.install-method != 'path' && steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: ${{ steps.prepare.outputs.root }}
+        key: ${{ steps.prepare.outputs.cache-key }}
+    - name: Run cargo-release-plan
+      shell: pwsh
+      env:
+        CRP_ACTION_PATH: ${{ github.action_path }}
+        CRP_EXECUTABLE: ${{ steps.install.outputs.executable }}
+        CRP_COMMAND: ${{ inputs.command }}
+        CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        CRP_CONFIG: ${{ inputs.config }}
+        CRP_BASE: ${{ inputs.base }}
+      run: |
+        & "$env:CRP_ACTION_PATH/scripts/Invoke-ReleasePlan.ps1"
