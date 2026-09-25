@@ -7,12 +7,14 @@ on:
       - action.yml
       - scripts/**
       - tests/fixtures/consumer/**
+      - tests/Invoke-OfflineCanary.ps1
       - .github/workflows/source-canary.yml
   pull_request:
     paths:
       - action.yml
       - scripts/**
       - tests/fixtures/consumer/**
+      - tests/Invoke-OfflineCanary.ps1
       - .github/workflows/source-canary.yml
 
 permissions:
@@ -64,3 +66,9 @@ jobs:
           foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
               if (-not $help.Contains($flag)) { throw "Source executable does not expose $flag." }
           }
+      - name: Exercise real offline operations
+        if: matrix.runner == 'ubuntu-24.04'
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+        run: ./tests/Invoke-OfflineCanary.ps1 -Executable $env:CRP_EXECUTABLE
