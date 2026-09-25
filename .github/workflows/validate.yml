@@ -2,12 +2,18 @@ name: Validate action
 
 on:
   push:
+    branches: [main]
   pull_request:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
+  identity:
+    uses: ./.github/workflows/identity.yml
+    with:
+      expected-sha: ${{ github.sha }}
   tests:
     strategy:
       fail-fast: false

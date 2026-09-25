@@ -2,7 +2,7 @@ name: Published installation
 
 on:
   push:
-    branches: [main, sandersaares-reusable-release-action]
+    branches: [main]
   pull_request:
 
 permissions:

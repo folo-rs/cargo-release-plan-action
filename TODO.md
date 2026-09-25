@@ -7,6 +7,9 @@
   callers, including nesting, whole-run and failed-job reruns.
 - Pass source-mode consumer checks independently from clean published-source and
   native-archive installation gates.
+- Extend the published gate to the finalized full-check/publication CLI and exact
+  external compatibility-checker installation. The bootstrap gate checks only the
+  currently exposed version-readiness flags.
 - Complete the authorized immutable-candidate live acceptance pilot before action
   release or production cutover. Do not publish action tags, configure Trusted
   Publishers or enable consumer publishing as part of read-only validation.

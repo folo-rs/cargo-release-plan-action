@@ -2,17 +2,17 @@ name: Source installation canary
 
 on:
   push:
-    branches: [main, sandersaares-reusable-release-action]
+    branches: [main]
     paths:
       - action.yml
       - scripts/**
-      - tests/**
+      - tests/fixtures/consumer/**
       - .github/workflows/source-canary.yml
   pull_request:
     paths:
       - action.yml
       - scripts/**
-      - tests/**
+      - tests/fixtures/consumer/**
       - .github/workflows/source-canary.yml
 
 permissions:

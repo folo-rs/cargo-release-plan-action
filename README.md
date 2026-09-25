@@ -34,8 +34,6 @@ macOS. Rust release policy and its tests belong in the application repository.
 Maintainer documentation describes the [design](docs/design.md) and
 [implementation](docs/implementation.md).
 
-Licensed under [MIT](LICENSE).
-
 ## Source dogfooding
 
 The root composite currently exposes `version` and `version-readiness`. Source
@@ -49,3 +47,17 @@ run the full pull-request gate.
 root `release.json` pins the finalized application. The manifest under
 `tests/fixtures` is only a unit-test fixture; its old published version does not
 claim support for the unified protocol. It is never a production fallback.
+
+## Release acceptance
+
+`Published installation / manifest` deliberately fails while production pins are
+unavailable. Source installation and unit-test fixtures cannot make that check
+pass. With finalized pins, isolated jobs verify published-source installation,
+the default binstall method and every promised native archive without source
+fallback. Full protocol and external-checker acceptance must accompany their
+implementation before release.
+
+Do not publish action tags, merge this bootstrap candidate or enable consumer
+publishing until its release acceptance obligations are fulfilled.
+
+Licensed under [MIT](LICENSE).
