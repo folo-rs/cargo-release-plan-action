@@ -29,6 +29,15 @@ Describe 'Action command forwarding' {
         New-Item (Join-Path $TestDrive $env:CRP_WORKING_DIRECTORY) -ItemType Directory -Force | Out-Null
     }
 
+    It 'passes the caller token only to preparation, not tool source builds' {
+        $metadata = Get-Content "$PSScriptRoot/../action.yml" -Raw
+        $marker = $metadata.IndexOf('    - name: Run cargo-release-plan', [StringComparison]::Ordinal)
+        $marker | Should -BeGreaterThan 0
+        $metadata.Substring(0, $marker) | Should -Not -Match 'GH_TOKEN:'
+        $invocation = $metadata.Substring($marker)
+        $invocation | Should -Match ([regex]::Escape('GH_TOKEN: ${{ inputs.command == ''prepare-publish'' && github.token || '''' }}'))
+    }
+
     It 'uses the selected executable for identity without acquiring a workspace' {
         $env:CRP_COMMAND = 'version'
         $env:CRP_WORKING_DIRECTORY = 'missing'

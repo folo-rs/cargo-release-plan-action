@@ -86,6 +86,10 @@ the selected release checkout, independently of `source-path` used to install th
 controller. Rust acquires release-branch history, validates the clean source and
 creates or verifies the immutable publication file. The action does not parse
 its human summary, fetch branch tips or rewrite its JSON.
+Only the preparation invocation exports `github.token` as `GH_TOKEN`, enabling
+the application's per-command GitHub CLI credential helper to read private
+repositories. Installation and offline invocation do not receive this credential
+from the action.
 
 The hosted consumer canary uses a disposable, tracked Cargo library and
 repository-local Git URL rewriting to exercise the real read-only fetch and

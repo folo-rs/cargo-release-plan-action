@@ -71,6 +71,7 @@ runs:
     - name: Run cargo-release-plan
       shell: pwsh
       env:
+        GH_TOKEN: ${{ inputs.command == 'prepare-publish' && github.token || '' }}
         CRP_ACTION_PATH: ${{ github.action_path }}
         CRP_EXECUTABLE: ${{ steps.install.outputs.executable }}
         CRP_COMMAND: ${{ inputs.command }}

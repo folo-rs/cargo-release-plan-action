@@ -62,6 +62,9 @@ checkout with full history and tracked configuration, manifests and lockfile.
 Keep the output outside that checkout or ignored. Rust fetches the configured
 release branch, verifies source membership and writes immutable intent; the
 action does not choose a branch tip or inspect publication policy.
+The invocation receives the caller's GitHub token for read access through GitHub
+CLI; the caller must grant `contents: read`. Tool source builds and offline
+commands do not receive that token from the action.
 
 `source-path` selects controller code for installation independently of that
 release checkout. Preparation performs no registry or GitHub writes and is not
