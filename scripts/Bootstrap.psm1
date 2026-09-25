@@ -1,5 +1,6 @@
 #Requires -Version 7.6
 Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
 
 function Invoke-BootstrapCommand {
     param(
@@ -34,7 +35,7 @@ function Get-InstallationSettings {
     if (-not $target) { throw "Unsupported native platform: $RunnerOS-$RunnerArch." }
 
     if ($Method -eq 'path') {
-        $packagePath = Join-Path (Resolve-Path $SourcePath).Path 'packages/cargo-release-plan'
+        $packagePath = Join-Path (Resolve-Path -LiteralPath $SourcePath).Path 'packages/cargo-release-plan'
         if (-not (Test-Path (Join-Path $packagePath 'Cargo.toml') -PathType Leaf)) {
             throw "source-path must contain packages/cargo-release-plan/Cargo.toml: $SourcePath"
         }
@@ -63,13 +64,13 @@ function Get-InstallationSettings {
     $digest = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     return @{
         Method = $Method
-        Root = Join-Path $TemporaryDirectory 'cargo-release-plan-installed'
+        Root = Join-Path $TemporaryDirectory "cargo-release-plan-$Method-$digest"
         Toolchain = $release.install_toolchain
         Target = $target
         Version = $release.tools.'cargo-release-plan'.version
         BinstallVersion = $release.cargo_binstall_version
         # Never use prefix restore keys: every manifest combination has a separate cache.
-        CacheKey = "cargo-release-plan-$RunnerOS-$RunnerArch-$digest"
+        CacheKey = "cargo-release-plan-$Method-$RunnerOS-$RunnerArch-$digest"
     }
 }
 
@@ -86,7 +87,14 @@ function Assert-ExecutableVersion {
 }
 
 function Install-ReleasePlan {
-    param([Parameter(Mandatory)][hashtable] $Settings)
+    param(
+        [Parameter(Mandatory)][hashtable] $Settings,
+        [switch] $ArchiveOnly
+    )
+
+    if ($ArchiveOnly -and $Settings.Method -ne 'binstall') {
+        throw 'Archive-only acceptance requires binstall.'
+    }
 
     $suffix = if ($IsWindows) { '.exe' } else { '' }
     $executable = Join-Path $Settings.Root "bin/cargo-release-plan$suffix"
@@ -118,7 +126,13 @@ function Install-ReleasePlan {
         $originalToolchain = $env:RUSTUP_TOOLCHAIN
         try {
             $env:RUSTUP_TOOLCHAIN = $Settings.Toolchain
-            Invoke-BootstrapCommand $binstall @('cargo-release-plan', '--version', "=$($Settings.Version)", '--locked', '--no-confirm', '--install-path', (Join-Path $Settings.Root 'bin'), '--target', $Settings.Target) | Out-Host
+            # --root applies to both archive extraction and compile fallback.
+            $arguments = @('cargo-release-plan', '--version', "=$($Settings.Version)", '--locked', '--no-confirm', '--root', $Settings.Root, '--no-track', '--target', $Settings.Target)
+            if ($ArchiveOnly) {
+                # Archive acceptance must not succeed through compilation or quickinstall.
+                $arguments += @('--strategies', 'crate-meta-data')
+            }
+            Invoke-BootstrapCommand $binstall $arguments | Out-Host
         }
         finally {
             $env:RUSTUP_TOOLCHAIN = $originalToolchain

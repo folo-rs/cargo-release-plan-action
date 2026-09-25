@@ -28,9 +28,16 @@ Describe 'Installation selection' {
         $windows.CacheKey | Should -Not -Be $arm.CacheKey
         $script:Parameters.RunnerOS = 'Linux'
         $script:Parameters.RunnerArch = 'X64'
+        $script:Parameters.Method = 'binstall'
+        $binary = Get-InstallationSettings @script:Parameters
+        $binary.CacheKey | Should -Not -Be $original.CacheKey
+        $binary.Root | Should -Not -Be $original.Root
+        $script:Parameters.Method = 'install'
         $manifestPath = Join-Path $script:Parameters.ActionPath 'release.json'
         (Get-Content $manifestPath -Raw).Replace('0.4.0', '0.4.1') | Set-Content $manifestPath
-        (Get-InstallationSettings @script:Parameters).CacheKey | Should -Not -Be $original.CacheKey
+        $updated = Get-InstallationSettings @script:Parameters
+        $updated.CacheKey | Should -Not -Be $original.CacheKey
+        $updated.Root | Should -Not -Be $original.Root
     }
 
     It 'rejects an unavailable release manifest rather than using test pins' {
@@ -136,7 +143,22 @@ Describe 'Executable installation' {
         Should -Invoke Invoke-BootstrapCommand -ModuleName Bootstrap -Times 1 -ParameterFilter {
             $Executable -like '*cargo-binstall*' -and $Arguments -contains '=0.4.0' -and
             $Arguments -contains '--locked' -and $Arguments -contains '--no-confirm' -and
-            $Arguments -notcontains '--disable-strategies'
+            $Arguments -contains '--root' -and $Arguments -contains $script:Settings.Root -and
+            $Arguments -notcontains '--install-path' -and $Arguments -notcontains '--strategies'
         }
+    }
+
+    It 'restricts archive acceptance to publisher metadata without source fallback' {
+        $script:Settings.Method = 'binstall'
+        Install-ReleasePlan $script:Settings -ArchiveOnly | Should -Match 'cargo-release-plan'
+        Should -Invoke Invoke-BootstrapCommand -ModuleName Bootstrap -Times 1 -ParameterFilter {
+            $Executable -like '*cargo-binstall*' -and
+            $Arguments -contains '--strategies' -and $Arguments -contains 'crate-meta-data'
+        }
+    }
+
+    It 'propagates installation failures without claiming executable success' {
+        Mock Invoke-BootstrapCommand -ModuleName Bootstrap { throw 'Installation failed.' }
+        { Install-ReleasePlan $script:Settings } | Should -Throw '*Installation failed*'
     }
 }

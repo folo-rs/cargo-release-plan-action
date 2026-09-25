@@ -19,7 +19,13 @@ if ($Stage -eq 'prepare') {
     "cache-key=$($settings.CacheKey)" >> $env:GITHUB_OUTPUT
 }
 else {
-    $executable = Install-ReleasePlan $settings
+    Push-Location (Join-Path $env:GITHUB_WORKSPACE $env:CRP_WORKING_DIRECTORY)
+    try {
+        $executable = Install-ReleasePlan $settings
+    }
+    finally {
+        Pop-Location
+    }
     "executable=$executable" >> $env:GITHUB_OUTPUT
     "version=$($settings.Version)" >> $env:GITHUB_OUTPUT
     (Split-Path $executable) >> $env:GITHUB_PATH

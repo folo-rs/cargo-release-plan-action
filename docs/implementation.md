@@ -48,8 +48,8 @@ OIDC, repository write or publication permission.
 ## Installation
 
 The composite first validates its command and selects an installation root.
-Released modes require the root `release.json`; its SHA-256 digest, runner OS and
-runner architecture form the installed-executable cache key. There are no prefix
+Released modes require the root `release.json`; its SHA-256 digest, installation
+method, runner OS and architecture form the installed-executable cache key. There are no prefix
 restore keys. Cache hits still verify the selected executable's exact version.
 The release manifest carries `schema_version`, independent `action_version`,
 `install_toolchain`, `cargo_binstall_version` and exact versions under `tools`.
@@ -63,6 +63,6 @@ overrides cannot silently select an older compiler.
 
 The published-source path uses `cargo install --version =<version> --locked`.
 The binstall path installs its exact installer and permits normal archive or
-source fallback. Published-archive acceptance must separately disable source
+source fallback into the same isolated `--root`. Published-archive acceptance must separately disable source
 fallback and use a clean root. Unit-test manifest fixtures do not satisfy that
 acceptance gate.
