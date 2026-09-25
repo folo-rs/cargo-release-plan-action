@@ -2,13 +2,13 @@ name: Cargo release plan
 description: Install and invoke the exact cargo-release-plan selected by this action.
 inputs:
   command:
-    description: Operation to execute (version, version-readiness, or offline check).
+    description: Operation to execute (version, version-readiness, check, or prepare-publish).
     required: true
   working-directory:
     description: Cargo workspace directory relative to the caller checkout.
     default: .
   config:
-    description: Workspace-relative publication configuration for check; not used by version-readiness.
+    description: Workspace-relative configuration for check and prepare-publish; not used by version-readiness.
     default: .cargo/release_plan.toml
   install-method:
     description: binstall, install, or path. Released methods require release.json.
@@ -18,6 +18,12 @@ inputs:
     default: .
   base:
     description: Explicit immutable release baseline for version-readiness or check.
+    default: ''
+  source:
+    description: Full immutable release source SHA for prepare-publish.
+    default: ''
+  output:
+    description: Publication manifest destination for prepare-publish, outside the source checkout or ignored.
     default: ''
 outputs:
   executable:
@@ -71,5 +77,7 @@ runs:
         CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         CRP_BASE: ${{ inputs.base }}
         CRP_CONFIG: ${{ inputs.config }}
+        CRP_SOURCE: ${{ inputs.source }}
+        CRP_OUTPUT: ${{ inputs.output }}
       run: |
         & "$env:CRP_ACTION_PATH/scripts/Invoke-ReleasePlan.ps1"

@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: folo-rs/folo
-          # The checkpoint supplies offline --config validation, not a published tool pin.
-          ref: 92e422059e4d524909160517c216f147d2d2d430
+          # This verified preparation checkpoint is not a published tool pin.
+          ref: e0616415059db4382b23a396d93fd42965c5a685
           path: .source
           persist-credentials: false
       - uses: ./
@@ -66,7 +66,12 @@ jobs:
           foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
               if (-not $help.Contains($flag)) { throw "Source executable does not expose $flag." }
           }
-      - name: Exercise real offline operations
+          $help = & $env:CRP_EXECUTABLE prepare-publish --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Source preparation help failed.' }
+          foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
+              if (-not $help.Contains($flag)) { throw "Source preparation does not expose $flag." }
+          }
+      - name: Exercise read-only consumer operations
         if: matrix.runner == 'ubuntu-24.04'
         shell: pwsh
         env:

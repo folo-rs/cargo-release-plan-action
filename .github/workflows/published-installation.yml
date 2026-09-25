@@ -69,3 +69,8 @@ jobs:
           foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
               if (-not $help.Contains($flag)) { throw "Installed tool does not expose $flag." }
           }
+          $help = & $executable prepare-publish --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed preparation help failed.' }
+          foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
+              if (-not $help.Contains($flag)) { throw "Installed preparation does not expose $flag." }
+          }

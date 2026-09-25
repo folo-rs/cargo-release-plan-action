@@ -4,7 +4,7 @@ BeforeAll {
     Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
     $script:InvokeAction = Join-Path $PSScriptRoot '../scripts/Invoke-ReleasePlan.ps1'
     $script:OriginalEnvironment = @{}
-    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG')) {
+    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_OUTPUT')) {
         $script:OriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
 }
@@ -24,6 +24,8 @@ Describe 'Action command forwarding' {
         $env:CRP_WORKING_DIRECTORY = 'nested workspace'
         $env:CRP_BASE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         $env:CRP_CONFIG = '.cargo/release_plan.toml'
+        $env:CRP_SOURCE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        $env:CRP_OUTPUT = Join-Path $TestDrive 'artifacts/publication.json'
         New-Item (Join-Path $TestDrive $env:CRP_WORKING_DIRECTORY) -ItemType Directory -Force | Out-Null
     }
 
@@ -83,6 +85,33 @@ Describe 'Action command forwarding' {
     It 'does not expose an unfinished publication command' {
         $env:CRP_COMMAND = 'publish'
         { & $script:InvokeAction } | Should -Throw '*Unsupported action command*'
+        Should -Invoke Invoke-BootstrapCommand -Times 0
+    }
+
+    It 'keeps the controller separate from the selected publication source' {
+        $env:CRP_COMMAND = 'prepare-publish'
+        Mock Invoke-BootstrapCommand {
+            (Get-Location).Path | Should -Be (Join-Path $TestDrive 'nested workspace')
+        }
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            $Executable -eq $env:CRP_EXECUTABLE -and
+            ($Arguments -join '|') -eq "prepare-publish|--manifest-path|Cargo.toml|--config|$env:CRP_CONFIG|--source|$env:CRP_SOURCE|--output|$env:CRP_OUTPUT"
+        }
+    }
+
+    It 'requires preparation source and output rather than choosing a branch tip' -ForEach @(
+        @{ Missing = 'source' }
+        @{ Missing = 'output' }
+        @{ Missing = 'config' }
+    ) {
+        $env:CRP_COMMAND = 'prepare-publish'
+        switch ($Missing) {
+            source { $env:CRP_SOURCE = 'main' }
+            output { $env:CRP_OUTPUT = '' }
+            config { $env:CRP_CONFIG = '' }
+        }
+        { & $script:InvokeAction } | Should -Throw '*requires*'
         Should -Invoke Invoke-BootstrapCommand -Times 0
     }
 

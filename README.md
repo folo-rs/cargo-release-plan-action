@@ -38,7 +38,8 @@ rerun and native installation results separately from production release gates.
 
 ## Source dogfooding
 
-The root composite exposes `version`, `version-readiness` and offline `check`. Source
+The root composite exposes `version`, `version-readiness`, offline `check` and
+read-only `prepare-publish`. Source
 mode builds `packages/cargo-release-plan` from the selected Folo checkout using
 the pinned installation compiler, independently of a consumer toolchain override.
 It checks the executable's exact `--version` and adds its installation directory
@@ -50,6 +51,17 @@ to `working-directory`. Rust validates publication inputs without remote writes.
 An absent or invalid configuration fails the operation; the action neither parses
 the configuration nor interprets human diagnostics. Neither offline command
 provides external API compatibility checking.
+
+`prepare-publish` requires `source` as a full immutable commit and `output` as the
+publication manifest destination. `working-directory` selects a clean source
+checkout with full history and tracked configuration, manifests and lockfile.
+Keep the output outside that checkout or ignored. Rust fetches the configured
+release branch, verifies source membership and writes immutable intent; the
+action does not choose a branch tip or inspect publication policy.
+
+`source-path` selects controller code for installation independently of that
+release checkout. Preparation performs no registry or GitHub writes and is not
+a successful publication receipt.
 
 `install-method: install` and the default `binstall` remain blocked until the
 root `release.json` pins the finalized application. The manifest under

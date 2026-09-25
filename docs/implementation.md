@@ -77,3 +77,18 @@ success from diagnostic text or hide the executable's failure.
 
 Both operations are offline checks, not a replacement for the external
 compatibility checker in the full pull-request gate.
+
+## Publication preparation
+
+`prepare-publish` forwards the explicit immutable `source`, workspace-relative
+configuration and `output` destination to the installed controller. It runs from
+the selected release checkout, independently of `source-path` used to install the
+controller. Rust acquires release-branch history, validates the clean source and
+creates or verifies the immutable publication file. The action does not parse
+its human summary, fetch branch tips or rewrite its JSON.
+
+The hosted consumer canary uses a disposable, tracked Cargo library and
+repository-local Git URL rewriting to exercise the real read-only fetch and
+preparation path. It checks envelope source linkage, unchanged output on repeated
+preparation and a clean source afterward, without contacting a registry writer
+or receiving OIDC authority.

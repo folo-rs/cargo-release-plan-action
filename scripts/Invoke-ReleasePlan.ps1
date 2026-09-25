@@ -27,6 +27,25 @@ switch ($env:CRP_COMMAND) {
             Pop-Location
         }
     }
+    prepare-publish {
+        if ($env:CRP_SOURCE -cnotmatch '^[0-9a-f]{40}$') {
+            throw 'prepare-publish requires an explicit immutable source commit.'
+        }
+        if ([string]::IsNullOrWhiteSpace($env:CRP_CONFIG) -or [string]::IsNullOrWhiteSpace($env:CRP_OUTPUT)) {
+            throw 'prepare-publish requires configuration and an output destination.'
+        }
+        Push-Location (Join-Path $env:GITHUB_WORKSPACE $env:CRP_WORKING_DIRECTORY)
+        try {
+            Invoke-BootstrapCommand $env:CRP_EXECUTABLE @(
+                'prepare-publish', '--manifest-path', 'Cargo.toml',
+                '--config', $env:CRP_CONFIG, '--source', $env:CRP_SOURCE,
+                '--output', $env:CRP_OUTPUT
+            )
+        }
+        finally {
+            Pop-Location
+        }
+    }
     default {
         throw "Unsupported action command '$env:CRP_COMMAND'."
     }
