@@ -1,0 +1,54 @@
+name: Action identity canary
+
+on:
+  workflow_call:
+    inputs:
+      expected-sha:
+        description: Expected action source, supplied by the proof caller.
+        required: true
+        type: string
+      fail-first-attempt:
+        description: Deliberately fail the first attempt to exercise failed-job reruns.
+        default: false
+        type: boolean
+    outputs:
+      action-sha:
+        description: Verified checked-out action source.
+        value: ${{ jobs.verify.outputs.sha }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  rerun-prerequisite:
+    runs-on: ubuntu-24.04
+    steps:
+      # Failing before source makes failed-job reruns execute resolution again.
+      - name: Exercise failed-job reruns
+        shell: pwsh
+        env:
+          FAIL_FIRST_ATTEMPT: ${{ inputs.fail-first-attempt }}
+        run: |
+          if ($env:FAIL_FIRST_ATTEMPT -eq 'true' -and $env:GITHUB_RUN_ATTEMPT -eq '1') {
+              throw 'Deliberate identity-canary failure; rerun failed jobs to verify retained source.'
+          }
+  source:
+    needs: rerun-prerequisite
+    uses: ./.github/workflows/action-source.yml
+  verify:
+    needs: source
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.identity.outputs.sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ needs.source.outputs.sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action/tests/actions/identity
+        id: identity
+        with:
+          expected-sha: ${{ inputs.expected-sha }}

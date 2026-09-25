@@ -1,0 +1,45 @@
+name: Validate action
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Install test tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser
+      - name: Test bootstrap
+        shell: pwsh
+        run: |
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester -Path tests -CI -Output Detailed
+  workflows:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Check workflow syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:GOBIN = Join-Path $env:RUNNER_TEMP 'actionlint'
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot install actionlint.' }
+          & "$env:GOBIN/actionlint" -color
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow validation failed.' }
