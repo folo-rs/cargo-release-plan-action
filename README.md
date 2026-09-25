@@ -21,6 +21,10 @@ original called workflow. Missing or ambiguous identity evidence is an error.
 
 ## Development
 
+The integration uses PowerShell 7.6, Git, Rustup/Cargo and GitHub CLI. Official
+action dependencies use Node.js 24 and require Actions Runner 2.327.1 or newer.
+The native hosted runners in the source canary provide these prerequisites.
+
 PowerShell 7.6 and Pester 5.7.1 run the bootstrap tests:
 
 ```powershell

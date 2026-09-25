@@ -63,6 +63,21 @@ flags including `--config`. Source mode uses no released executable cache.
 These source version and toolchain values identify this experiment, not the
 future production tool pin or the minimum supported Cargo publication runtime.
 
+## Actual consumer operations
+
+[Run 36193668716](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36193668716)
+executes the installed application through the action's invocation adapter against
+a disposable publishable library. Narrow version readiness and config-aware
+offline checking succeed; missing configuration fails. The source remains clean.
+
+[Run 36194230068](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36194230068)
+installs verified preparation source e0616415059db4382b23a396d93fd42965c5a685 on
+every supported native runner. Its Linux consumer fixture additionally invokes
+real `prepare-publish` using repository-local Git URL rewriting. The resulting
+envelope identifies the selected source, repeated preparation preserves identical
+bytes and source remains clean. This exercises the read-only preparation operation
+without remote writes or publication credentials.
+
 ## Regression and release gates
 
 [Run 36192210190](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36192210190)
