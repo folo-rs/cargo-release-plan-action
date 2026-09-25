@@ -32,7 +32,9 @@ actionlint
 The hosted workflow pins Pester and actionlint, and exercises Linux, Windows and
 macOS. Rust release policy and its tests belong in the application repository.
 Maintainer documentation describes the [design](docs/design.md) and
-[implementation](docs/implementation.md).
+[implementation](docs/implementation.md). The
+[bootstrap acceptance evidence](docs/validation.md) records hosted identity,
+rerun and native installation results separately from production release gates.
 
 ## Source dogfooding
 
