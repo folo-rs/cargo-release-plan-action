@@ -4,7 +4,7 @@ BeforeAll {
     Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
     $script:InvokeAction = Join-Path $PSScriptRoot '../scripts/Invoke-ReleasePlan.ps1'
     $script:OriginalEnvironment = @{}
-    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_OUTPUT')) {
+    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN')) {
         $script:OriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
 }
@@ -25,7 +25,9 @@ Describe 'Action command forwarding' {
         $env:CRP_BASE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
         $env:CRP_CONFIG = '.cargo/release_plan.toml'
         $env:CRP_SOURCE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
+        $env:CRP_PUBLICATION = Join-Path $TestDrive 'original intent/publication.json'
         $env:CRP_OUTPUT = Join-Path $TestDrive 'artifacts/publication.json'
+        $env:CRP_DRY_RUN = 'false'
         New-Item (Join-Path $TestDrive $env:CRP_WORKING_DIRECTORY) -ItemType Directory -Force | Out-Null
     }
 
@@ -36,6 +38,13 @@ Describe 'Action command forwarding' {
         $metadata.Substring(0, $marker) | Should -Not -Match 'GH_TOKEN:'
         $invocation = $metadata.Substring($marker)
         $invocation | Should -Match ([regex]::Escape('GH_TOKEN: ${{ inputs.command == ''prepare-publish'' && github.token || '''' }}'))
+    }
+
+    It 'forwards registry inputs without changing the requested dry-run mode' {
+        $metadata = Get-Content "$PSScriptRoot/../action.yml" -Raw
+        $metadata | Should -Match ([regex]::Escape('CRP_PUBLICATION: ${{ inputs.publication }}'))
+        $metadata | Should -Match ([regex]::Escape('CRP_DRY_RUN: ${{ inputs.dry-run }}'))
+        $metadata | Should -Match '(?m)^  dry-run:\r?\n    description: [^\r\n]+\r?\n    default: ''false''\r?$'
     }
 
     It 'uses the selected executable for identity without acquiring a workspace' {
@@ -92,7 +101,7 @@ Describe 'Action command forwarding' {
     }
 
     It 'does not expose an unfinished publication command' {
-        $env:CRP_COMMAND = 'publish'
+        $env:CRP_COMMAND = 'publish-github'
         { & $script:InvokeAction } | Should -Throw '*Unsupported action command*'
         Should -Invoke Invoke-BootstrapCommand -Times 0
     }
@@ -122,6 +131,71 @@ Describe 'Action command forwarding' {
         }
         { & $script:InvokeAction } | Should -Throw '*requires*'
         Should -Invoke Invoke-BootstrapCommand -Times 0
+    }
+
+    It 'forwards registry intent and a new outcome from the original source' -ForEach @(
+        @{ DryRun = 'true'; Suffix = '|--dry-run' }
+        @{ DryRun = 'false'; Suffix = '' }
+    ) {
+        $env:CRP_COMMAND = 'publish-registry'
+        $env:CRP_DRY_RUN = $DryRun
+        $env:CRP_OUTPUT = Join-Path $TestDrive 'new attempt/registry.json'
+        Mock Invoke-BootstrapCommand {
+            (Get-Location).Path | Should -Be (Join-Path $TestDrive 'nested workspace')
+        }
+        $originalDirectory = (Get-Location).Path
+        & $script:InvokeAction
+        (Get-Location).Path | Should -Be $originalDirectory
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            $Executable -eq $env:CRP_EXECUTABLE -and
+            ($Arguments -join '|') -eq "publish|registry|--publication|$env:CRP_PUBLICATION|--manifest-path|Cargo.toml|--output|$env:CRP_OUTPUT$Suffix"
+        }
+    }
+
+    It 'rejects an ambiguous dry-run value before invoking publication' -ForEach @(
+        @{ Value = '' }
+        @{ Value = 'yes' }
+        @{ Value = ' true' }
+    ) {
+        $env:CRP_COMMAND = 'publish-registry'
+        $env:CRP_DRY_RUN = $Value
+        { & $script:InvokeAction } | Should -Throw '*dry-run must be true or false*'
+        Should -Invoke Invoke-BootstrapCommand -Times 0
+    }
+
+    It 'requires explicit registry input and outcome paths' -ForEach @(
+        @{ Missing = 'publication' }
+        @{ Missing = 'output' }
+    ) {
+        $env:CRP_COMMAND = 'publish-registry'
+        if ($Missing -eq 'publication') { $env:CRP_PUBLICATION = '' }
+        else { $env:CRP_OUTPUT = '' }
+        { & $script:InvokeAction } | Should -Throw '*requires publication and a new outcome*'
+        Should -Invoke Invoke-BootstrapCommand -Times 0
+    }
+
+    It 'preserves a failed registry receipt and never rewrites intent' {
+        $env:CRP_COMMAND = 'publish-registry'
+        $env:CRP_PUBLICATION = Join-Path $TestDrive 'publication.json'
+        $env:CRP_OUTPUT = Join-Path $TestDrive 'registry-outcome.json'
+        'original immutable intent' | Set-Content $env:CRP_PUBLICATION
+        Mock Invoke-BootstrapCommand {
+            '{"complete":false,"errors":["cleanup failed"]}' | Set-Content $env:CRP_OUTPUT
+            throw 'Registry cleanup failed.'
+        }
+        $originalDirectory = (Get-Location).Path
+        { & $script:InvokeAction } | Should -Throw '*Registry cleanup failed*'
+        (Get-Location).Path | Should -Be $originalDirectory
+        (Get-Content $env:CRP_PUBLICATION) | Should -Be 'original immutable intent'
+        (Get-Content $env:CRP_OUTPUT) | Should -Be '{"complete":false,"errors":["cleanup failed"]}'
+    }
+
+    It 'does not fabricate an outcome when the registry command produces none' {
+        $env:CRP_COMMAND = 'publish-registry'
+        $env:CRP_OUTPUT = Join-Path $TestDrive 'absent-outcome.json'
+        Mock Invoke-BootstrapCommand { throw 'Invalid publication input.' }
+        { & $script:InvokeAction } | Should -Throw '*Invalid publication input*'
+        Test-Path $env:CRP_OUTPUT | Should -BeFalse
     }
 
     It 'preserves invocation errors and restores the caller directory' {

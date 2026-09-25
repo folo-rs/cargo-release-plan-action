@@ -3,8 +3,8 @@
 Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
-**Bootstrap candidate, not a released publisher.** Production tool pins and
-publication commands are not available from this repository yet. No action
+**Bootstrap candidate, not a released publisher.** Production tool pins and the
+complete release workflow are not available from this repository yet. No action
 release or production publishing setup is implied by its read-only checks.
 See [release acceptance](TODO.md) for the remaining gates.
 
@@ -42,8 +42,8 @@ rerun and native installation results separately from production release gates.
 
 ## Source dogfooding
 
-The root composite exposes `version`, `version-readiness`, offline `check` and
-read-only `prepare-publish`. Source
+The root composite exposes `version`, `version-readiness`, offline `check`,
+read-only `prepare-publish` and `publish-registry`. Source
 mode builds `packages/cargo-release-plan` from the selected Folo checkout using
 the pinned installation compiler, independently of a consumer toolchain override.
 It checks the executable's exact `--version` and adds its installation directory
@@ -69,6 +69,25 @@ commands do not receive that token from the action.
 `source-path` selects controller code for installation independently of that
 release checkout. Preparation performs no registry or GitHub writes and is not
 a successful publication receipt.
+
+`publish-registry` consumes the immutable `publication` file and writes a
+separate `output` outcome. `working-directory` must select the clean original
+source, not the current release-branch tip. Paths are absolute or relative to
+that directory. Use a new outcome destination for each attempt and retain the
+original manifest unchanged.
+
+Set `dry-run: 'true'` to query crates.io availability without acquiring publishing
+credentials or uploading. A successful dry-run still records `complete: false`;
+it cannot authorize later publication phases. `dry-run` defaults to `'false'`,
+matching the CLI. Real registry publication requires caller-provided GitHub OIDC
+authority and configured crates.io Trusted Publishing. The calling consumer
+workflow, not the reusable workflow, is the registered workflow identity.
+This candidate has no hosted workflow granting that authority.
+
+The command's failure remains a failed action even when it writes a partial
+outcome. Preserve that file for diagnosis. Missing or invalid inputs can fail
+without an outcome; an absent file is not evidence of empty work or success.
+The action does not interpret stderr, reconcile registry state or rewrite receipts.
 
 `install-method: install` and the default `binstall` remain blocked until the
 root `release.json` pins the finalized application. The manifest under

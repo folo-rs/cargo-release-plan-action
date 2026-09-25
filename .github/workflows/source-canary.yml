@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: folo-rs/folo
-          # This verified preparation checkpoint is not a published tool pin.
-          ref: e0616415059db4382b23a396d93fd42965c5a685
+          # This reviewed registry checkpoint is not a published tool pin.
+          ref: 70e69a525d4017d7659307d315a0b4d57ee93162
           path: .source
           persist-credentials: false
       - uses: ./
@@ -55,7 +55,7 @@ jobs:
           CRP_VERSION: ${{ steps.tool.outputs.version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:CRP_VERSION -ne '0.4.0') { throw 'Unexpected source tool version.' }
+          if ($env:CRP_VERSION -ne '0.4.1') { throw 'Unexpected source tool version.' }
           if ((Get-Command cargo-release-plan).Source -ne $env:CRP_EXECUTABLE) {
               throw 'The verified executable was not added to PATH.'
           }
@@ -70,6 +70,11 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Source preparation help failed.' }
           foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
               if (-not $help.Contains($flag)) { throw "Source preparation does not expose $flag." }
+          }
+          $help = & $env:CRP_EXECUTABLE publish registry --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Source registry help failed.' }
+          foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
+              if (-not $help.Contains($flag)) { throw "Source registry operation does not expose $flag." }
           }
       - name: Exercise read-only consumer operations
         if: matrix.runner == 'ubuntu-24.04'

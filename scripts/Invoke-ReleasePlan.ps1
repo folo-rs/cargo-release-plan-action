@@ -46,6 +46,29 @@ switch ($env:CRP_COMMAND) {
             Pop-Location
         }
     }
+    publish-registry {
+        if ([string]::IsNullOrWhiteSpace($env:CRP_PUBLICATION) -or [string]::IsNullOrWhiteSpace($env:CRP_OUTPUT)) {
+            throw 'publish-registry requires publication and a new outcome destination.'
+        }
+        if ($env:CRP_DRY_RUN -cnotin @('true', 'false')) {
+            throw 'dry-run must be true or false.'
+        }
+        $arguments = @(
+            'publish', 'registry', '--publication', $env:CRP_PUBLICATION,
+            '--manifest-path', 'Cargo.toml', '--output', $env:CRP_OUTPUT
+        )
+        if ($env:CRP_DRY_RUN -ceq 'true') {
+            $arguments += '--dry-run'
+        }
+        Push-Location (Join-Path $env:GITHUB_WORKSPACE $env:CRP_WORKING_DIRECTORY)
+        try {
+            # Rust validates immutable intent and records this attempt separately, even on failure.
+            Invoke-BootstrapCommand $env:CRP_EXECUTABLE $arguments
+        }
+        finally {
+            Pop-Location
+        }
+    }
     default {
         throw "Unsupported action command '$env:CRP_COMMAND'."
     }

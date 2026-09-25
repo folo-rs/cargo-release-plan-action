@@ -2,7 +2,7 @@ name: Cargo release plan
 description: Install and invoke the exact cargo-release-plan selected by this action.
 inputs:
   command:
-    description: Operation to execute (version, version-readiness, check, or prepare-publish).
+    description: Operation to execute (version, version-readiness, check, prepare-publish, or publish-registry).
     required: true
   working-directory:
     description: Cargo workspace directory relative to the caller checkout.
@@ -22,9 +22,15 @@ inputs:
   source:
     description: Full immutable release source SHA for prepare-publish.
     default: ''
-  output:
-    description: Publication manifest destination for prepare-publish, outside the source checkout or ignored.
+  publication:
+    description: Immutable publication manifest consumed by publish-registry, relative to working-directory or absolute.
     default: ''
+  output:
+    description: Manifest destination for prepare-publish or new outcome destination for publish-registry. Keep outside source or ignored.
+    default: ''
+  dry-run:
+    description: For publish-registry, inspect registry availability without credentials or uploads. Accepts true or false.
+    default: 'false'
 outputs:
   executable:
     description: Absolute path of the verified cargo-release-plan executable.
@@ -79,6 +85,8 @@ runs:
         CRP_BASE: ${{ inputs.base }}
         CRP_CONFIG: ${{ inputs.config }}
         CRP_SOURCE: ${{ inputs.source }}
+        CRP_PUBLICATION: ${{ inputs.publication }}
         CRP_OUTPUT: ${{ inputs.output }}
+        CRP_DRY_RUN: ${{ inputs.dry-run }}
       run: |
         & "$env:CRP_ACTION_PATH/scripts/Invoke-ReleasePlan.ps1"

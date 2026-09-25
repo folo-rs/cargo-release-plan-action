@@ -74,3 +74,8 @@ jobs:
           foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
               if (-not $help.Contains($flag)) { throw "Installed preparation does not expose $flag." }
           }
+          $help = & $executable publish registry --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed registry help failed.' }
+          foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
+              if (-not $help.Contains($flag)) { throw "Installed registry operation does not expose $flag." }
+          }

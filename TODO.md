@@ -7,7 +7,7 @@
   from the [verified source and workflow identity checks](docs/validation.md).
 - Extend the published gate to the finalized full-check/publication CLI and exact
   external compatibility-checker installation. The bootstrap gate checks only the
-  currently exposed offline check flags.
+  currently exposed offline check, preparation and registry flags.
 - Complete the authorized immutable-candidate live acceptance pilot before action
   release or production cutover. Do not publish action tags, configure Trusted
   Publishers or enable consumer publishing as part of read-only validation.

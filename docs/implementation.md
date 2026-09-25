@@ -96,3 +96,24 @@ repository-local Git URL rewriting to exercise the real read-only fetch and
 preparation path. It checks envelope source linkage, unchanged output on repeated
 preparation and a clean source afterward, without contacting a registry writer
 or receiving OIDC authority.
+
+## Registry invocation
+
+`publish-registry` forwards `publish registry`, the immutable publication path,
+the original source manifest and a new outcome path. A canonical `dry-run`
+boolean controls only the CLI's `--dry-run` switch. The bootstrap does not query
+registry state, select package work or reinterpret exit status. Rust owns source
+validation, Cargo ordering, OIDC exchange, credential cleanup and outcome creation.
+
+The same immutable publication passes to each attempt. Outcomes are separate
+files, and an error may leave either a failed outcome or no outcome if input
+validation could not establish its identity. The adapter never creates a
+substitute receipt, deletes a failed receipt or converts failure into a success.
+A dry-run outcome is deliberately incomplete even when the invocation succeeds.
+
+The source canary runs only dry-run registry operations with no OIDC or
+publication credentials. It queries the real crates.io sparse index for a
+uniquely named fixture package, checks `would_publish` without completion,
+verifies that retry cannot overwrite an existing outcome and distinguishes
+missing input from a valid failed-attempt receipt. No live upload or credential
+exchange is part of this action-side proof.

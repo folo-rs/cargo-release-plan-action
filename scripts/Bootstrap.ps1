@@ -4,8 +4,8 @@ param([Parameter(Mandatory)][ValidateSet('prepare', 'install')][string] $Stage)
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot/Bootstrap.psm1" -Force
 
-if ($env:CRP_COMMAND -notin @('version', 'version-readiness', 'check', 'prepare-publish')) {
-    throw "Unsupported action command '$env:CRP_COMMAND'. Full checks and publication require the finalized application protocol."
+if ($env:CRP_COMMAND -notin @('version', 'version-readiness', 'check', 'prepare-publish', 'publish-registry')) {
+    throw "Unsupported action command '$env:CRP_COMMAND'."
 }
 $sourcePath = if ([IO.Path]::IsPathRooted($env:CRP_SOURCE_PATH)) {
     $env:CRP_SOURCE_PATH
