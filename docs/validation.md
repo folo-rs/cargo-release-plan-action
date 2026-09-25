@@ -78,6 +78,34 @@ envelope identifies the selected source, repeated preparation preserves identica
 bytes and source remains clean. This exercises the read-only preparation operation
 without remote writes or publication credentials.
 
+## Registry dry-run contract
+
+[Run 36202618251](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36202618251)
+uses action commit cbe1a0dda7abe338f7acc3d9a15d618d9838e426 and reviewed Folo
+source 70e69a525d4017d7659307d315a0b4d57ee93162, which declares
+`cargo-release-plan 0.4.1`. Installation and command-flag verification pass on
+every supported native runner.
+
+The Linux consumer fixture runs the real registry command through the action
+adapter. It has no OIDC or registry upload credentials and queries the public
+crates.io sparse index for a uniquely named package. The observed contract is:
+
+- Nonempty dry-run work yields `would_publish`, linked to the original publication
+  ID, with `dry_run: true` and `complete: false`.
+- Reusing an outcome path fails without changing its prior bytes.
+- Missing publication input fails without producing an outcome.
+- Source differing from the publication fails and retains a linked, incomplete
+  outcome with errors.
+- The original publication remains byte-identical and the fixture is clean after
+  the deliberate source-mismatch case is restored.
+
+This verifies dry-run invocation and outcome handling, not credential exchange,
+registry upload or completion of the full release process.
+
+[Run 36202618728](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36202618728)
+passes the registry adapter's regression suite on Linux, Windows and macOS,
+workflow validation and exact current-revision identity verification.
+
 ## Regression and release gates
 
 [Run 36192210190](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36192210190)
