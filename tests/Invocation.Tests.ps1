@@ -4,7 +4,7 @@ BeforeAll {
     Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
     $script:InvokeAction = Join-Path $PSScriptRoot '../scripts/Invoke-ReleasePlan.ps1'
     $script:OriginalEnvironment = @{}
-    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE')) {
+    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG')) {
         $script:OriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
 }
@@ -23,6 +23,7 @@ Describe 'Action command forwarding' {
         $env:CRP_EXECUTABLE = Join-Path $TestDrive 'selected-executable'
         $env:CRP_WORKING_DIRECTORY = 'nested workspace'
         $env:CRP_BASE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        $env:CRP_CONFIG = '.cargo/release_plan.toml'
         New-Item (Join-Path $TestDrive $env:CRP_WORKING_DIRECTORY) -ItemType Directory -Force | Out-Null
     }
 
@@ -54,6 +55,29 @@ Describe 'Action command forwarding' {
         $env:CRP_BASE = 'main'
         { & $script:InvokeAction } | Should -Throw '*immutable base*'
         Should -Invoke Invoke-BootstrapCommand -Times 0
+    }
+
+    It 'forwards one explicit workspace-relative config without parsing it' {
+        $env:CRP_COMMAND = 'check'
+        $env:CRP_CONFIG = '.cargo/custom release.toml'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            $Executable -eq $env:CRP_EXECUTABLE -and
+            ($Arguments -join '|') -eq "check|--manifest-path|Cargo.toml|--base|$env:CRP_BASE|--format|github|--config|.cargo/custom release.toml"
+        }
+    }
+
+    It 'rejects an empty config rather than silently running a narrower check' {
+        $env:CRP_COMMAND = 'check'
+        $env:CRP_CONFIG = ''
+        { & $script:InvokeAction } | Should -Throw '*requires an explicit*configuration*'
+        Should -Invoke Invoke-BootstrapCommand -Times 0
+    }
+
+    It 'preserves invalid-configuration errors from the application' {
+        $env:CRP_COMMAND = 'check'
+        Mock Invoke-BootstrapCommand { throw 'Invalid configuration.' }
+        { & $script:InvokeAction } | Should -Throw '*Invalid configuration*'
     }
 
     It 'does not expose an unfinished publication command' {

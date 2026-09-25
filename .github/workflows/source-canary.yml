@@ -32,8 +32,8 @@ jobs:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           repository: folo-rs/folo
-          # This source checkpoint restores --version; it is not a published tool pin.
-          ref: b36a7ebd683626eb71c8f87d834db5465d67cf9c
+          # The checkpoint supplies offline --config validation, not a published tool pin.
+          ref: 92e422059e4d524909160517c216f147d2d2d430
           path: .source
           persist-credentials: false
       - uses: ./
@@ -59,3 +59,8 @@ jobs:
           }
           & $env:CRP_EXECUTABLE --version
           if ($LASTEXITCODE -ne 0) { throw 'Source executable cannot run.' }
+          $help = & $env:CRP_EXECUTABLE check --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Source check help failed.' }
+          foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
+              if (-not $help.Contains($flag)) { throw "Source executable does not expose $flag." }
+          }

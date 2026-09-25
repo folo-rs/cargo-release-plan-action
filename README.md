@@ -36,12 +36,18 @@ Maintainer documentation describes the [design](docs/design.md) and
 
 ## Source dogfooding
 
-The root composite currently exposes `version` and `version-readiness`. Source
+The root composite exposes `version`, `version-readiness` and offline `check`. Source
 mode builds `packages/cargo-release-plan` from the selected Folo checkout using
 the pinned installation compiler, independently of a consumer toolchain override.
 It checks the executable's exact `--version` and adds its installation directory
 to `PATH`. `version-readiness` requires a full immutable `base` SHA and does not
 run the full pull-request gate.
+
+`check` also forwards `config`, defaulting to `.cargo/release_plan.toml` relative
+to `working-directory`. Rust validates publication inputs without remote writes.
+An absent or invalid configuration fails the operation; the action neither parses
+the configuration nor interprets human diagnostics. Neither offline command
+provides external API compatibility checking.
 
 `install-method: install` and the default `binstall` remain blocked until the
 root `release.json` pins the finalized application. The manifest under

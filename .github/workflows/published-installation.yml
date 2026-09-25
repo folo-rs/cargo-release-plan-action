@@ -66,6 +66,6 @@ jobs:
           $executable = Install-ReleasePlan -Settings $settings -ArchiveOnly:($env:ARCHIVE_ONLY -eq 'true')
           $help = & $executable check --help | Out-String
           if ($LASTEXITCODE -ne 0) { throw 'Installed tool check help failed.' }
-          foreach ($flag in @('--manifest-path', '--base', '--format')) {
+          foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
               if (-not $help.Contains($flag)) { throw "Installed tool does not expose $flag." }
           }

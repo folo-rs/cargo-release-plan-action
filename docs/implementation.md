@@ -66,3 +66,14 @@ The binstall path installs its exact installer and permits normal archive or
 source fallback into the same isolated `--root`. Published-archive acceptance must separately disable source
 fallback and use a clean root. Unit-test manifest fixtures do not satisfy that
 acceptance gate.
+
+## Offline invocation
+
+`version-readiness` forwards `check` with the selected manifest, immutable baseline
+and GitHub diagnostic format. It deliberately omits publication configuration.
+The `check` action operation additionally passes one workspace-relative `--config`
+path. Rust owns parsing and validating that file. The action does not infer
+success from diagnostic text or hide the executable's failure.
+
+Both operations are offline checks, not a replacement for the external
+compatibility checker in the full pull-request gate.
