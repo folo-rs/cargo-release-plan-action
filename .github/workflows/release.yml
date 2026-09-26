@@ -1,0 +1,119 @@
+name: Cargo publication
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: .
+      config:
+        type: string
+        default: .cargo/release_plan.toml
+      install-method:
+        type: string
+        default: binstall
+      source-path:
+        type: string
+        default: .
+      publishing-environment:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source:
+    uses: ./.github/workflows/action-source.yml
+  context:
+    needs: source
+    runs-on: ubuntu-24.04
+    outputs:
+      source: ${{ steps.context.outputs.source }}
+      scope: ${{ steps.context.outputs.scope }}
+      platforms: ${{ steps.context.outputs.platforms }}
+      controller-id: ${{ steps.upload.outputs.artifact-id }}
+      controller-version: ${{ steps.tool.outputs.version }}
+    steps:
+      - name: Require an explicit release trigger
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -notin @('push', 'workflow_dispatch')) {
+              throw 'Publication requires a push or manual release invocation, not a pull-request event.'
+          }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: consumer
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ needs.source.outputs.sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action
+        id: tool
+        with:
+          command: version
+          install-method: ${{ inputs.install-method }}
+          source-path: consumer/${{ inputs.source-path }}
+          working-directory: consumer/${{ inputs.working-directory }}
+      - name: Resolve source and complete-release lock
+        id: context
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: release-context
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_CONFIG: ${{ inputs.config }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./.release-plan-action/scripts/Workflow.psm1
+          $json = & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1 | Out-String
+          $context = Get-ContextRouting -Json $json -Repository $env:GITHUB_REPOSITORY
+          $release = Get-Content ./.release-plan-action/release.json -Raw | ConvertFrom-Json
+          "source=$($context.head)" >> $env:GITHUB_OUTPUT
+          "scope=$($context.concurrency_group)" >> $env:GITHUB_OUTPUT
+          "platforms=$(@{ include = @($release.platforms | Select-Object target, runner) } | ConvertTo-Json -Depth 4 -Compress)" >> $env:GITHUB_OUTPUT
+      - name: Package the verified controller
+        shell: pwsh
+        env:
+          CONTROLLER: ${{ steps.tool.outputs.executable }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) { throw 'Controller installation must not receive OIDC.' }
+          tar -cf "$env:RUNNER_TEMP/controller.tar" -C (Split-Path $env:CONTROLLER) (Split-Path $env:CONTROLLER -Leaf)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot package controller executable.' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        with:
+          name: crp-${{ steps.context.outputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-controller
+          path: ${{ runner.temp }}/controller.tar
+          if-no-files-found: error
+  execute:
+    needs: [source, context]
+    uses: ./.github/workflows/_release.yml
+    concurrency:
+      group: ${{ needs.context.outputs.scope }}
+      cancel-in-progress: false
+      queue: max
+    permissions:
+      contents: write
+      issues: write
+      actions: read
+      id-token: write
+    with:
+      working-directory: ${{ inputs.working-directory }}
+      config: ${{ inputs.config }}
+      install-method: ${{ inputs.install-method }}
+      source-path: ${{ inputs.source-path }}
+      publishing-environment: ${{ inputs.publishing-environment }}
+      source: ${{ needs.context.outputs.source }}
+      scope: ${{ needs.context.outputs.scope }}
+      platforms: ${{ needs.context.outputs.platforms }}
+      action-sha: ${{ needs.source.outputs.sha }}
+      controller-id: ${{ needs.context.outputs.controller-id }}
+      controller-version: ${{ needs.context.outputs.controller-version }}

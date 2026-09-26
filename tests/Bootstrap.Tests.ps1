@@ -162,3 +162,41 @@ Describe 'Executable installation' {
         { Install-ReleasePlan $script:Settings } | Should -Throw '*Installation failed*'
     }
 }
+
+Describe 'External checker installation' {
+    BeforeEach {
+        $script:CheckerSettings = @{
+            Method = 'path'
+            Root = Join-Path $TestDrive 'controller'
+            Toolchain = '1.98.1'
+            Target = 'x86_64-unknown-linux-gnu'
+        }
+        Mock Test-Path -ModuleName Bootstrap { $false }
+        Mock Invoke-BootstrapCommand -ModuleName Bootstrap {
+            if ($Executable -like '*cargo-semver-checks*') { 'cargo-semver-checks 0.50.0' }
+        }
+    }
+
+    It 'pins the external checker independently of source-controller version' {
+        $action = (Resolve-Path "$PSScriptRoot/..").Path
+        Install-CompatibilityChecker -ActionPath $action -Settings $script:CheckerSettings | Should -Match 'cargo-semver-checks'
+        Should -Invoke Invoke-BootstrapCommand -ModuleName Bootstrap -Times 1 -ParameterFilter {
+            $Executable -like '*cargo-binstall*' -and $Arguments -contains '=0.50.0'
+        }
+    }
+
+    It 'honors published-source installation for the external checker' {
+        $script:CheckerSettings.Method = 'install'
+        Install-CompatibilityChecker -ActionPath (Resolve-Path "$PSScriptRoot/..").Path -Settings $script:CheckerSettings
+        Should -Invoke Invoke-BootstrapCommand -ModuleName Bootstrap -Times 1 -ParameterFilter {
+            $Executable -eq 'cargo' -and $Arguments -contains 'cargo-semver-checks' -and $Arguments -contains '--locked' -and $Arguments -contains '=0.50.0'
+        }
+    }
+
+    It 'rejects a wrong checker executable even when it exists' {
+        Mock Test-Path -ModuleName Bootstrap { $true }
+        Mock Invoke-BootstrapCommand -ModuleName Bootstrap { 'cargo-semver-checks 0.49.0' }
+        { Install-CompatibilityChecker -ActionPath (Resolve-Path "$PSScriptRoot/..").Path -Settings $script:CheckerSettings } |
+            Should -Throw '*identity mismatch*'
+    }
+}

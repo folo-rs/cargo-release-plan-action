@@ -4,7 +4,7 @@ param([Parameter(Mandatory)][ValidateSet('prepare', 'install')][string] $Stage)
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot/Bootstrap.psm1" -Force
 
-if ($env:CRP_COMMAND -notin @('version', 'version-readiness', 'check', 'prepare-publish', 'publish-registry', 'check-publishing-identity')) {
+if ($env:CRP_COMMAND -notin @('version', 'version-readiness', 'check', 'release-context', 'check-compatibility', 'check-published', 'prepare-publish', 'publish-registry', 'publish-github', 'publish-binaries', 'publish-report', 'check-publishing-identity')) {
     throw "Unsupported action command '$env:CRP_COMMAND'."
 }
 $sourcePath = if ([IO.Path]::IsPathRooted($env:CRP_SOURCE_PATH)) {
@@ -22,6 +22,13 @@ else {
     Push-Location (Join-Path $env:GITHUB_WORKSPACE $env:CRP_WORKING_DIRECTORY)
     try {
         $executable = Install-ReleasePlan $settings
+        if ($env:CRP_COMMAND -eq 'check-compatibility') {
+            $checker = Install-CompatibilityChecker -ActionPath $env:CRP_ACTION_PATH -Settings $settings
+            (Split-Path $checker) >> $env:GITHUB_PATH
+        }
+        if ($env:CRP_COMMAND -eq 'publish-binaries') {
+            & "$PSScriptRoot/Install-ArchiveTools.ps1"
+        }
     }
     finally {
         Pop-Location

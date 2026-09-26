@@ -9,6 +9,20 @@ permissions:
   contents: read
 
 jobs:
+  acceptance:
+    name: Published installation
+    needs: [manifest, install]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          MANIFEST: ${{ needs.manifest.result }}
+          INSTALL: ${{ needs.install.result }}
+        run: |
+          if ($env:MANIFEST -ne 'success' -or $env:INSTALL -ne 'success') {
+              throw 'Exact published package, native archive and external-checker installation are required.'
+          }
   manifest:
     runs-on: ubuntu-24.04
     steps:
@@ -78,4 +92,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Installed registry help failed.' }
           foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
               if (-not $help.Contains($flag)) { throw "Installed registry operation does not expose $flag." }
+          }
+          foreach ($command in @('release-context', 'check-compatibility', 'check-published', 'check-publishing-identity')) {
+              & $executable $command --help
+              if ($LASTEXITCODE -ne 0) { throw "Installed tool does not expose $command." }
+          }
+          foreach ($phase in @('github', 'binaries', 'report')) {
+              & $executable publish $phase --help
+              if ($LASTEXITCODE -ne 0) { throw "Installed tool does not expose publish $phase." }
+          }
+          if ($env:INSTALL_METHOD -eq 'install') {
+              Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
           }

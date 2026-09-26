@@ -26,10 +26,43 @@ inputs:
     description: Immutable publication manifest consumed by publish-registry, relative to working-directory or absolute.
     default: ''
   output:
-    description: Manifest destination for prepare-publish or new outcome destination for publish-registry. Keep outside source or ignored.
+    description: New output file or directory for the selected command. Keep outside source or ignored.
     default: ''
+  prepared:
+    description: Captured prepared inputs for check-compatibility, exclusive with plan and base.
+    default: ''
+  plan:
+    description: Resolved plan for check-compatibility or check-published.
+    default: ''
+  deny-findings:
+    description: Fail check-compatibility on insufficient increments.
+    default: 'false'
+  batches:
+    description: New frozen-batch directory for publish-github.
+    default: ''
+  batch:
+    description: Frozen batch file for publish-binaries.
+    default: ''
+  artifacts:
+    description: New staging directory for publish-binaries.
+    default: ''
+  no-upload:
+    description: Stage a binary batch without querying or uploading GitHub assets.
+    default: 'false'
+  outcomes:
+    description: Downloaded outcome artifact directory for publish-report.
+    default: ''
+  jobs:
+    description: Platform job-result JSON file for publish-report.
+    default: ''
+  repository:
+    description: Caller owner/repository for publish-report.
+    default: ''
+  no-issue:
+    description: Generate publish-report without writing GitHub issues.
+    default: 'false'
   dry-run:
-    description: For publish-registry, inspect registry availability without credentials or uploads. Accepts true or false.
+    description: Preview registry or GitHub reconciliation without remote writes. Accepts true or false.
     default: 'false'
 outputs:
   executable:
@@ -77,7 +110,7 @@ runs:
     - name: Run cargo-release-plan
       shell: pwsh
       env:
-        GH_TOKEN: ${{ inputs.command == 'prepare-publish' && github.token || '' }}
+        GH_TOKEN: ${{ (inputs.command == 'release-context' || inputs.command == 'prepare-publish' || inputs.command == 'publish-github' || inputs.command == 'publish-binaries' || inputs.command == 'publish-report') && github.token || '' }}
         CRP_ACTION_PATH: ${{ github.action_path }}
         CRP_EXECUTABLE: ${{ steps.install.outputs.executable }}
         CRP_COMMAND: ${{ inputs.command }}
@@ -88,5 +121,16 @@ runs:
         CRP_PUBLICATION: ${{ inputs.publication }}
         CRP_OUTPUT: ${{ inputs.output }}
         CRP_DRY_RUN: ${{ inputs.dry-run }}
+        CRP_PREPARED: ${{ inputs.prepared }}
+        CRP_PLAN: ${{ inputs.plan }}
+        CRP_DENY_FINDINGS: ${{ inputs.deny-findings }}
+        CRP_BATCHES: ${{ inputs.batches }}
+        CRP_BATCH: ${{ inputs.batch }}
+        CRP_ARTIFACTS: ${{ inputs.artifacts }}
+        CRP_NO_UPLOAD: ${{ inputs.no-upload }}
+        CRP_OUTCOMES: ${{ inputs.outcomes }}
+        CRP_JOBS: ${{ inputs.jobs }}
+        CRP_REPOSITORY: ${{ inputs.repository }}
+        CRP_NO_ISSUE: ${{ inputs.no-issue }}
       run: |
         & "$env:CRP_ACTION_PATH/scripts/Invoke-ReleasePlan.ps1"

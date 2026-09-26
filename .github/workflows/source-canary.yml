@@ -3,24 +3,23 @@ name: Source installation canary
 on:
   push:
     branches: [main]
-    paths:
-      - action.yml
-      - scripts/**
-      - tests/fixtures/consumer/**
-      - tests/Invoke-OfflineCanary.ps1
-      - .github/workflows/source-canary.yml
   pull_request:
-    paths:
-      - action.yml
-      - scripts/**
-      - tests/fixtures/consumer/**
-      - tests/Invoke-OfflineCanary.ps1
-      - .github/workflows/source-canary.yml
 
 permissions:
   contents: read
 
 jobs:
+  acceptance:
+    name: Source installation
+    needs: install
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          INSTALL: ${{ needs.install.result }}
+        run: |
+          if ($env:INSTALL -ne 'success') { throw 'Every supported native source installation must succeed.' }
   install:
     strategy:
       fail-fast: false
@@ -78,9 +77,32 @@ jobs:
           }
           & $env:CRP_EXECUTABLE check-publishing-identity --help
           if ($LASTEXITCODE -ne 0) { throw 'Source identity probe help failed.' }
+          foreach ($command in @('release-context', 'check-compatibility', 'check-published')) {
+              & $env:CRP_EXECUTABLE $command --help
+              if ($LASTEXITCODE -ne 0) { throw "Missing $command." }
+          }
+          foreach ($phase in @('github', 'binaries', 'report')) {
+              & $env:CRP_EXECUTABLE publish $phase --help
+              if ($LASTEXITCODE -ne 0) { throw "Missing publish $phase." }
+          }
+      - name: Install the pinned external compatibility checker
+        if: matrix.runner == 'ubuntu-24.04'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./scripts/Bootstrap.psm1
+          $settings = Get-InstallationSettings -ActionPath $env:GITHUB_WORKSPACE -Method path -SourcePath .source -TemporaryDirectory $env:RUNNER_TEMP -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
+          $checker = Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
+          (Split-Path $checker) >> $env:GITHUB_PATH
       - name: Exercise read-only consumer operations
         if: matrix.runner == 'ubuntu-24.04'
         shell: pwsh
         env:
           CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          GH_TOKEN: ${{ github.token }}
         run: ./tests/Invoke-OfflineCanary.ps1 -Executable $env:CRP_EXECUTABLE
+      - name: Stage a real frozen native batch without uploads
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+        run: ./tests/Invoke-BinaryCanary.ps1 -Executable $env:CRP_EXECUTABLE

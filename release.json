@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "action_version": "0.1.0",
+  "install_toolchain": "1.98.1",
+  "cargo_binstall_version": "1.23.0",
+  "tools": {
+    "cargo-release-plan": { "version": "0.4.1" },
+    "cargo-semver-checks": { "version": "0.50.0" }
+  },
+  "archive_tools": {
+    "seven_zip": {
+      "version": "26.03",
+      "asset": "7z2603-extra.7z",
+      "sha256": "191894e6acb3647ffb69ce630479ff318523b2e2b9890aa7f05c1127c2e59b8f"
+    }
+  },
+  "platforms": [
+    { "target": "x86_64-unknown-linux-gnu", "runner": "ubuntu-24.04", "os": "Linux", "arch": "X64" },
+    { "target": "aarch64-unknown-linux-gnu", "runner": "ubuntu-24.04-arm", "os": "Linux", "arch": "ARM64" },
+    { "target": "x86_64-pc-windows-msvc", "runner": "windows-2025", "os": "Windows", "arch": "X64" },
+    { "target": "aarch64-pc-windows-msvc", "runner": "windows-11-arm", "os": "Windows", "arch": "ARM64" },
+    { "target": "aarch64-apple-darwin", "runner": "macos-15", "os": "macOS", "arch": "ARM64" }
+  ]
+}

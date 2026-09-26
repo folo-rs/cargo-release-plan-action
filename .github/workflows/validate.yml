@@ -10,6 +10,20 @@ permissions:
   actions: read
 
 jobs:
+  acceptance:
+    name: Action validation
+    needs: [identity, tests, workflows]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          $results = $env:RESULTS | ConvertFrom-Json -AsHashtable
+          if (@($results.Values | Where-Object result -NE 'success').Count) {
+              throw 'Action tests, exact identity and workflow validation must all succeed.'
+          }
   identity:
     uses: ./.github/workflows/identity.yml
     with:
@@ -47,5 +61,8 @@ jobs:
           $env:GOBIN = Join-Path $env:RUNNER_TEMP 'actionlint'
           go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
           if ($LASTEXITCODE -ne 0) { throw 'Cannot install actionlint.' }
-          & "$env:GOBIN/actionlint" -color
+          # v1.7.12 predates queue:max. Only this unsupported-key diagnostic is excluded;
+          # Workflow.Tests.ps1 verifies the exact value; scheduling-canary proves hosted support.
+          # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+          & "$env:GOBIN/actionlint" -color -ignore '^unexpected key "queue" for "concurrency" section\.'
           if ($LASTEXITCODE -ne 0) { throw 'Workflow validation failed.' }

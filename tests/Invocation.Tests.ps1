@@ -4,7 +4,7 @@ BeforeAll {
     Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
     $script:InvokeAction = Join-Path $PSScriptRoot '../scripts/Invoke-ReleasePlan.ps1'
     $script:OriginalEnvironment = @{}
-    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN')) {
+    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_DENY_FINDINGS', 'CRP_BATCHES', 'CRP_BATCH', 'CRP_ARTIFACTS', 'CRP_NO_UPLOAD', 'CRP_OUTCOMES', 'CRP_JOBS', 'CRP_REPOSITORY', 'CRP_NO_ISSUE')) {
         $script:OriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
 }
@@ -28,16 +28,27 @@ Describe 'Action command forwarding' {
         $env:CRP_PUBLICATION = Join-Path $TestDrive 'original intent/publication.json'
         $env:CRP_OUTPUT = Join-Path $TestDrive 'artifacts/publication.json'
         $env:CRP_DRY_RUN = 'false'
+        $env:CRP_PLAN = ''
+        $env:CRP_PREPARED = ''
+        $env:CRP_DENY_FINDINGS = 'true'
+        $env:CRP_BATCHES = Join-Path $TestDrive 'batches'
+        $env:CRP_BATCH = Join-Path $TestDrive 'batch.json'
+        $env:CRP_ARTIFACTS = Join-Path $TestDrive 'staging'
+        $env:CRP_NO_UPLOAD = 'true'
+        $env:CRP_OUTCOMES = Join-Path $TestDrive 'outcomes'
+        $env:CRP_JOBS = Join-Path $TestDrive 'jobs.json'
+        $env:CRP_REPOSITORY = 'example/consumer'
+        $env:CRP_NO_ISSUE = 'true'
         New-Item (Join-Path $TestDrive $env:CRP_WORKING_DIRECTORY) -ItemType Directory -Force | Out-Null
     }
 
-    It 'passes the caller token only to preparation, not tool source builds' {
+    It 'passes the caller token only to GitHub-facing commands, not tool source builds' {
         $metadata = Get-Content "$PSScriptRoot/../action.yml" -Raw
         $marker = $metadata.IndexOf('    - name: Run cargo-release-plan', [StringComparison]::Ordinal)
         $marker | Should -BeGreaterThan 0
         $metadata.Substring(0, $marker) | Should -Not -Match 'GH_TOKEN:'
         $invocation = $metadata.Substring($marker)
-        $invocation | Should -Match ([regex]::Escape('GH_TOKEN: ${{ inputs.command == ''prepare-publish'' && github.token || '''' }}'))
+        $invocation | Should -Match ([regex]::Escape('GH_TOKEN: ${{ (inputs.command == ''release-context'' || inputs.command == ''prepare-publish'' || inputs.command == ''publish-github'' || inputs.command == ''publish-binaries'' || inputs.command == ''publish-report'') && github.token || '''' }}'))
     }
 
     It 'forwards registry inputs without changing the requested dry-run mode' {
@@ -121,8 +132,8 @@ Describe 'Action command forwarding' {
         { & $script:InvokeAction } | Should -Throw '*Invalid configuration*'
     }
 
-    It 'does not expose an unfinished publication command' {
-        $env:CRP_COMMAND = 'publish-github'
+    It 'rejects unknown commands instead of constructing an invocation' {
+        $env:CRP_COMMAND = 'publish-unknown'
         { & $script:InvokeAction } | Should -Throw '*Unsupported action command*'
         Should -Invoke Invoke-BootstrapCommand -Times 0
     }
@@ -225,5 +236,60 @@ Describe 'Action command forwarding' {
         Mock Invoke-BootstrapCommand { throw 'Version readiness failed.' }
         { & $script:InvokeAction } | Should -Throw '*Version readiness failed*'
         (Get-Location).Path | Should -Be $originalDirectory
+    }
+
+    It 'forwards release context and optional tested base without choosing branch policy' {
+        $env:CRP_COMMAND = 'release-context'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            ($Arguments -join '|') -eq "release-context|--manifest-path|Cargo.toml|--config|$env:CRP_CONFIG|--base|$env:CRP_BASE"
+        }
+    }
+
+    It 'enforces compatibility findings against the selected immutable baseline' {
+        $env:CRP_COMMAND = 'check-compatibility'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            ($Arguments -join '|') -eq "check-compatibility|--manifest-path|Cargo.toml|--output|$env:CRP_OUTPUT|--base|$env:CRP_BASE|--deny-findings"
+        }
+    }
+
+    It 'forwards captured compatibility inputs without accepting detached reports' -ForEach @(
+        @{ Field = 'PREPARED'; Flag = '--prepared' }
+        @{ Field = 'PLAN'; Flag = '--plan' }
+    ) {
+        $env:CRP_COMMAND = 'check-compatibility'
+        $env:CRP_BASE = ''
+        [Environment]::SetEnvironmentVariable("CRP_$Field", 'captured.json')
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            $Arguments -contains $Flag -and $Arguments -contains 'captured.json' -and $Arguments -notcontains '--report'
+        }
+    }
+
+    It 'preserves GitHub dry-run selection and separate batch destination' {
+        $env:CRP_COMMAND = 'publish-github'
+        $env:CRP_DRY_RUN = 'true'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            ($Arguments -join '|') -eq "publish|github|--publication|$env:CRP_PUBLICATION|--manifest-path|Cargo.toml|--output|$env:CRP_OUTPUT|--batches|$env:CRP_BATCHES|--dry-run"
+        }
+    }
+
+    It 'stages only the specified frozen binary batch when no-upload is true' {
+        $env:CRP_COMMAND = 'publish-binaries'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            ($Arguments -join '|') -eq "publish|binaries|--publication|$env:CRP_PUBLICATION|--batch|$env:CRP_BATCH|--manifest-path|Cargo.toml|--output|$env:CRP_OUTPUT|--artifacts|$env:CRP_ARTIFACTS|--no-upload"
+        }
+    }
+
+    It 'reports unavailable intent rather than creating a replacement' {
+        $env:CRP_COMMAND = 'publish-report'
+        $env:CRP_PUBLICATION = ''
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            ($Arguments -join '|') -eq "publish|report|--repository|$env:CRP_REPOSITORY|--outcomes|$env:CRP_OUTCOMES|--jobs|$env:CRP_JOBS|--output|$env:CRP_OUTPUT|--no-issue"
+        }
     }
 }

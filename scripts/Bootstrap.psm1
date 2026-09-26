@@ -86,6 +86,47 @@ function Assert-ExecutableVersion {
     }
 }
 
+function Install-CompatibilityChecker {
+    param(
+        [Parameter(Mandatory)][string] $ActionPath,
+        [Parameter(Mandatory)][hashtable] $Settings
+    )
+
+    $release = Get-Content (Join-Path $ActionPath 'release.json') -Raw | ConvertFrom-Json
+    $version = $release.tools.'cargo-semver-checks'.version
+    if ($version -cnotmatch '^\d+\.\d+\.\d+$') { throw 'The compatibility checker requires an exact version.' }
+    $suffix = if ($IsWindows) { '.exe' } else { '' }
+    $root = Join-Path $Settings.Root "checker-$version"
+    $executable = Join-Path $root "bin/cargo-semver-checks$suffix"
+    if (-not (Test-Path $executable -PathType Leaf)) {
+        Invoke-BootstrapCommand rustup @('toolchain', 'install', $Settings.Toolchain, '--profile', 'minimal', '--no-self-update') | Out-Host
+        if ($Settings.Method -eq 'install') {
+            Invoke-BootstrapCommand cargo @("+$($Settings.Toolchain)", 'install', 'cargo-semver-checks', '--version', "=$version", '--locked', '--root', $root, '--target', $Settings.Target) | Out-Host
+        }
+        else {
+            # The checker is external published tooling even when the controller is built from source.
+            $installerRoot = Join-Path $Settings.Root 'installer'
+            $installer = Join-Path $installerRoot "bin/cargo-binstall$suffix"
+            if (-not (Test-Path $installer -PathType Leaf)) {
+                Invoke-BootstrapCommand cargo @("+$($Settings.Toolchain)", 'install', 'cargo-binstall', '--version', "=$($release.cargo_binstall_version)", '--locked', '--root', $installerRoot) | Out-Host
+            }
+            $originalToolchain = $env:RUSTUP_TOOLCHAIN
+            try {
+                $env:RUSTUP_TOOLCHAIN = $Settings.Toolchain
+                Invoke-BootstrapCommand $installer @('cargo-semver-checks', '--version', "=$version", '--locked', '--no-confirm', '--root', $root, '--no-track', '--target', $Settings.Target) | Out-Host
+            }
+            finally {
+                $env:RUSTUP_TOOLCHAIN = $originalToolchain
+            }
+        }
+    }
+    $actual = (Invoke-BootstrapCommand $executable @('--version') | Out-String).Trim()
+    if ($actual -cne "cargo-semver-checks $version") {
+        throw "Compatibility checker identity mismatch: expected cargo-semver-checks $version."
+    }
+    return $executable
+}
+
 function Install-ReleasePlan {
     param(
         [Parameter(Mandatory)][hashtable] $Settings,
@@ -142,4 +183,4 @@ function Install-ReleasePlan {
     return $executable
 }
 
-Export-ModuleMember -Function Get-InstallationSettings, Install-ReleasePlan, Invoke-BootstrapCommand
+Export-ModuleMember -Function Get-InstallationSettings, Install-ReleasePlan, Install-CompatibilityChecker, Invoke-BootstrapCommand
