@@ -1,0 +1,102 @@
+name: Read-only scheduling fixture
+
+on:
+  workflow_call:
+    inputs:
+      lane:
+        type: string
+        required: true
+      fail-first-attempt:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  registry:
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        run: Write-Output 'Scheduling fixture prerequisite; no registry operation is executed.'
+  github:
+    needs: registry
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - name: Produce an explicitly synthetic routing fixture
+        shell: pwsh
+        env:
+          FAIL_FIRST: ${{ inputs.fail-first-attempt && inputs.lane == 'one' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $root = Join-Path $env:RUNNER_TEMP 'routing'
+          New-Item "$root/batches" -ItemType Directory -Force | Out-Null
+          $id = 'a' * 64
+          @{ id = $id } | ConvertTo-Json | Set-Content "$root/publication.json"
+          $partial = $env:FAIL_FIRST -eq 'true' -and $env:GITHUB_RUN_ATTEMPT -eq '1'
+          $targets = @('x86_64-unknown-linux-gnu')
+          if (-not $partial) { $targets += 'aarch64-unknown-linux-gnu' }
+          $batches = @($targets | ForEach-Object {
+              $batchId = 'b' * 64
+              @{ publication_id = $id; target = $_; batch_id = $batchId } | ConvertTo-Json | Set-Content "$root/batches/$_.json"
+              @{ target = $_; path = "$_.json"; batch_id = $batchId }
+          })
+          @{ schema_version = 1; publication_id = $id; phase = 'github'; dry_run = $false; complete = (-not $partial); batches = $batches } |
+              ConvertTo-Json -Depth 5 | Set-Content "$root/outcome.json"
+          if ($partial) { throw 'Deliberate fixture tag failure; valid independent routing must still execute.' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        if: always() && !cancelled()
+        with:
+          name: crp-scheduling-${{ inputs.lane }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/routing
+          if-no-files-found: error
+  binaries:
+    needs: [registry, github]
+    if: ${{ always() && !cancelled() && needs.registry.result == 'success' && (needs.github.result == 'success' || needs.github.result == 'failure') && needs.github.outputs.artifact-id != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        target: [x86_64-unknown-linux-gnu, aarch64-unknown-linux-gnu]
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.github.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/routing
+      - name: Exercise production routing with synthetic artifacts
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+          PARTIAL: ${{ inputs.fail-first-attempt && inputs.lane == 'one' && github.run_attempt == 1 }}
+          FAIL_SLOT: ${{ inputs.fail-first-attempt && inputs.lane == 'two' && matrix.target == 'aarch64-unknown-linux-gnu' && github.run_attempt == 1 }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./scripts/Workflow.psm1
+          $root = Join-Path $env:RUNNER_TEMP 'routing'
+          $batch = Get-BatchRouting -Outcome "$root/outcome.json" -Publication "$root/publication.json" -Batches "$root/batches" -Target $env:TARGET
+          $expected = -not ($env:PARTIAL -eq 'true' -and $env:TARGET -eq 'aarch64-unknown-linux-gnu')
+          if ([bool]$batch -ne $expected) { throw 'Slot did not reflect this reconciliation attempt.' }
+          Write-Output "Fixture target $env:TARGET requested=$expected; attempt=$env:GITHUB_RUN_ATTEMPT. No source compilation or upload."
+          if ($env:FAIL_SLOT -eq 'true') {
+              throw 'Deliberate native-slot failure; its rerun must restore the successful prior producer artifact.'
+          }
+  verdict:
+    needs: [github, binaries]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          GITHUB_RESULT: ${{ needs.github.result }}
+          BINARY_RESULT: ${{ needs.binaries.result }}
+        run: |
+          if ($env:BINARY_RESULT -ne 'success') { throw 'Valid independent fixture routes did not execute.' }
+          if ($env:GITHUB_RESULT -ne 'success') { throw 'Reconciliation failure remains visible despite successful independent routes.' }

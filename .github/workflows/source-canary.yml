@@ -1,0 +1,127 @@
+name: Source installation canary
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  acceptance:
+    name: Source installation
+    needs: install
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          INSTALL: ${{ needs.install.result }}
+        run: |
+          if ($env:INSTALL -ne 'success') { throw 'Every supported native source installation must succeed.' }
+  install:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/folo
+          # This reviewed full-command checkpoint is not published-installation evidence.
+          ref: 6af125672846e69dab59e38cc0a18a30b3b25e5a
+          path: .source
+          persist-credentials: false
+      - uses: ./
+        id: tool
+        with:
+          command: version
+          install-method: path
+          source-path: .source
+          working-directory: tests/fixtures/consumer
+        env:
+          # The source compiler must not inherit the consumer's older override.
+          RUSTUP_TOOLCHAIN: 1.88.0
+      - name: Verify executable selection
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_VERSION: ${{ steps.tool.outputs.version }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if ($env:CRP_VERSION -ne '0.4.1') { throw 'Unexpected source tool version.' }
+          if ((Get-Command cargo-release-plan).Source -ne $env:CRP_EXECUTABLE) {
+              throw 'The verified executable was not added to PATH.'
+          }
+          & $env:CRP_EXECUTABLE --version
+          if ($LASTEXITCODE -ne 0) { throw 'Source executable cannot run.' }
+          $help = & $env:CRP_EXECUTABLE check --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Source check help failed.' }
+          foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
+              if (-not $help.Contains($flag)) { throw "Source executable does not expose $flag." }
+          }
+          $help = & $env:CRP_EXECUTABLE prepare-publish --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Source preparation help failed.' }
+          foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
+              if (-not $help.Contains($flag)) { throw "Source preparation does not expose $flag." }
+          }
+          $help = & $env:CRP_EXECUTABLE publish registry --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Source registry help failed.' }
+          foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
+              if (-not $help.Contains($flag)) { throw "Source registry operation does not expose $flag." }
+          }
+          & $env:CRP_EXECUTABLE check-publishing-identity --help
+          if ($LASTEXITCODE -ne 0) { throw 'Source identity probe help failed.' }
+          foreach ($command in @('release-context', 'check-compatibility', 'check-published')) {
+              & $env:CRP_EXECUTABLE $command --help
+              if ($LASTEXITCODE -ne 0) { throw "Missing $command." }
+          }
+          foreach ($phase in @('github', 'binaries', 'report')) {
+              & $env:CRP_EXECUTABLE publish $phase --help
+              if ($LASTEXITCODE -ne 0) { throw "Missing publish $phase." }
+          }
+      - name: Package controller transfer canary
+        if: matrix.runner == 'ubuntu-24.04'
+        shell: pwsh
+        env:
+          CONTROLLER: ${{ steps.tool.outputs.executable }}
+        run: |
+          tar -cf "$env:RUNNER_TEMP/controller.tar" -C (Split-Path $env:CONTROLLER) (Split-Path $env:CONTROLLER -Leaf)
+          if ($LASTEXITCODE -ne 0) { throw 'Controller canary packaging failed.' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: matrix.runner == 'ubuntu-24.04'
+        id: controller
+        with:
+          name: crp-controller-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/controller.tar
+          if-no-files-found: error
+      - uses: ./.github/actions/restore-controller
+        if: matrix.runner == 'ubuntu-24.04'
+        with:
+          artifact-id: ${{ steps.controller.outputs.artifact-id }}
+          version: ${{ steps.tool.outputs.version }}
+      - name: Install the pinned external compatibility checker
+        if: matrix.runner == 'ubuntu-24.04'
+        uses: ./.github/actions/install-checker
+        with:
+          install-method: path
+          source-path: .source
+      - name: Exercise read-only consumer operations
+        if: matrix.runner == 'ubuntu-24.04'
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          GH_TOKEN: ${{ github.token }}
+        run: ./tests/Invoke-OfflineCanary.ps1 -Executable $env:CRP_EXECUTABLE
+      - name: Stage a real frozen native batch without uploads
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+        run: ./tests/Invoke-BinaryCanary.ps1 -Executable $env:CRP_EXECUTABLE

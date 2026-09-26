@@ -1,0 +1,120 @@
+name: Published installation
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+
+jobs:
+  acceptance:
+    name: Published installation
+    needs: [manifest, install]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          MANIFEST: ${{ needs.manifest.result }}
+          INSTALL: ${{ needs.install.result }}
+        run: |
+          if ($env:MANIFEST -ne 'success' -or $env:INSTALL -ne 'success') {
+              throw 'Exact published package, native archive and external-checker installation are required.'
+          }
+  manifest:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Require finalized release pins
+        shell: pwsh
+        run: |
+          if (-not (Test-Path release.json -PathType Leaf)) {
+              throw 'Release acceptance is blocked: finalized, published tool pins are required in release.json. Source checks cannot satisfy this gate.'
+          }
+  install:
+    needs: manifest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: ubuntu-24.04
+            method: install
+            archive-only: false
+          - runner: ubuntu-24.04
+            method: binstall
+            archive-only: false
+          - runner: ubuntu-24.04
+            method: binstall
+            archive-only: true
+          - runner: ubuntu-24.04-arm
+            method: binstall
+            archive-only: true
+          - runner: windows-2025
+            method: binstall
+            archive-only: true
+          - runner: windows-11-arm
+            method: binstall
+            archive-only: true
+          - runner: macos-15
+            method: binstall
+            archive-only: true
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install published tool without executable caches
+        shell: pwsh
+        env:
+          INSTALL_METHOD: ${{ matrix.method }}
+          ARCHIVE_ONLY: ${{ matrix.archive-only }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./scripts/Bootstrap.psm1
+          $root = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+          $settings = Get-InstallationSettings -ActionPath $env:GITHUB_WORKSPACE -Method $env:INSTALL_METHOD -SourcePath . -TemporaryDirectory $root -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
+          $executable = Install-ReleasePlan -Settings $settings -ArchiveOnly:($env:ARCHIVE_ONLY -eq 'true')
+          $help = & $executable check --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed tool check help failed.' }
+          foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
+              if (-not $help.Contains($flag)) { throw "Installed tool does not expose $flag." }
+          }
+          $help = & $executable prepare-publish --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed preparation help failed.' }
+          foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
+              if (-not $help.Contains($flag)) { throw "Installed preparation does not expose $flag." }
+          }
+          $help = & $executable publish registry --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed registry help failed.' }
+          foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
+              if (-not $help.Contains($flag)) { throw "Installed registry operation does not expose $flag." }
+          }
+          $operations = @(
+              @{ args = @('release-context'); flags = @('--manifest-path', '--config', '--base') },
+              @{ args = @('check-compatibility'); flags = @('--output', '--manifest-path', '--prepared', '--plan', '--base', '--deny-findings') },
+              @{ args = @('check-published'); flags = @('--manifest-path', '--plan') },
+              @{ args = @('check-publishing-identity'); flags = @('--verbose') },
+              @{ args = @('publish', 'github'); flags = @('--publication', '--manifest-path', '--output', '--batches', '--dry-run') },
+              @{ args = @('publish', 'binaries'); flags = @('--publication', '--manifest-path', '--batch', '--output', '--artifacts', '--no-upload') },
+              @{ args = @('publish', 'report'); flags = @('--publication', '--repository', '--outcomes', '--jobs', '--output', '--no-issue') }
+          )
+          foreach ($operation in $operations) {
+              $arguments = $operation.args + @('--help')
+              $help = & $executable @arguments | Out-String
+              if ($LASTEXITCODE -ne 0) { throw "Installed operation is unavailable: $($operation.args -join ' ')." }
+              foreach ($flag in $operation.flags) {
+                  if (-not $help.Contains($flag)) { throw "Installed operation lacks $flag." }
+              }
+          }
+          if ($env:INSTALL_METHOD -eq 'install') {
+              $checker = Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
+              $env:PATH = (Split-Path $checker) + [IO.Path]::PathSeparator + $env:PATH
+              & ./tests/Invoke-OfflineCanary.ps1 -Executable $executable
+          }
+          & ./tests/Invoke-BinaryCanary.ps1 -Executable $executable

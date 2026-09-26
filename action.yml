@@ -1,0 +1,136 @@
+name: Cargo release plan
+description: Install and invoke the exact cargo-release-plan selected by this action.
+inputs:
+  command:
+    description: Operation to execute; see README for supported release commands.
+    required: true
+  working-directory:
+    description: Cargo workspace directory relative to the caller checkout.
+    default: .
+  config:
+    description: Workspace-relative configuration for check and prepare-publish; not used by version-readiness.
+    default: .cargo/release_plan.toml
+  install-method:
+    description: binstall, install, or path. Released methods require release.json.
+    default: binstall
+  source-path:
+    description: Folo source checkout used only by path installation.
+    default: .
+  base:
+    description: Explicit immutable release baseline for version-readiness or check.
+    default: ''
+  source:
+    description: Full immutable release source SHA for prepare-publish.
+    default: ''
+  publication:
+    description: Immutable publication manifest consumed by publish-registry, relative to working-directory or absolute.
+    default: ''
+  output:
+    description: New output file or directory for the selected command. Keep outside source or ignored.
+    default: ''
+  prepared:
+    description: Captured prepared inputs for check-compatibility, exclusive with plan and base.
+    default: ''
+  plan:
+    description: Resolved plan for check-compatibility or check-published.
+    default: ''
+  deny-findings:
+    description: Fail check-compatibility on insufficient increments.
+    default: 'false'
+  batches:
+    description: New frozen-batch directory for publish-github.
+    default: ''
+  batch:
+    description: Frozen batch file for publish-binaries.
+    default: ''
+  artifacts:
+    description: New staging directory for publish-binaries.
+    default: ''
+  no-upload:
+    description: Stage a binary batch without querying or uploading GitHub assets.
+    default: 'false'
+  outcomes:
+    description: Downloaded outcome artifact directory for publish-report.
+    default: ''
+  jobs:
+    description: Platform job-result JSON file for publish-report.
+    default: ''
+  repository:
+    description: Caller owner/repository for publish-report.
+    default: ''
+  no-issue:
+    description: Generate publish-report without writing GitHub issues.
+    default: 'false'
+  dry-run:
+    description: Preview registry or GitHub reconciliation without remote writes. Accepts true or false.
+    default: 'false'
+outputs:
+  executable:
+    description: Absolute path of the verified cargo-release-plan executable.
+    value: ${{ steps.install.outputs.executable }}
+  version:
+    description: Exact selected application version.
+    value: ${{ steps.install.outputs.version }}
+runs:
+  using: composite
+  steps:
+    - name: Select installation
+      id: prepare
+      shell: pwsh
+      env:
+        CRP_ACTION_PATH: ${{ github.action_path }}
+        CRP_INSTALL_METHOD: ${{ inputs.install-method }}
+        CRP_SOURCE_PATH: ${{ inputs.source-path }}
+        CRP_COMMAND: ${{ inputs.command }}
+        CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |
+        & "$env:CRP_ACTION_PATH/scripts/Bootstrap.ps1" -Stage prepare
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.install-method != 'path'
+      id: cache
+      with:
+        path: ${{ steps.prepare.outputs.root }}
+        key: ${{ steps.prepare.outputs.cache-key }}
+    - name: Install and verify executable
+      id: install
+      shell: pwsh
+      env:
+        CRP_ACTION_PATH: ${{ github.action_path }}
+        CRP_INSTALL_METHOD: ${{ inputs.install-method }}
+        CRP_SOURCE_PATH: ${{ inputs.source-path }}
+        CRP_COMMAND: ${{ inputs.command }}
+        CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+      run: |
+        & "$env:CRP_ACTION_PATH/scripts/Bootstrap.ps1" -Stage install
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: inputs.install-method != 'path' && steps.cache.outputs.cache-hit != 'true'
+      with:
+        path: ${{ steps.prepare.outputs.root }}
+        key: ${{ steps.prepare.outputs.cache-key }}
+    - name: Run cargo-release-plan
+      shell: pwsh
+      env:
+        GH_TOKEN: ${{ (inputs.command == 'release-context' || inputs.command == 'prepare-publish' || inputs.command == 'publish-github' || inputs.command == 'publish-binaries' || inputs.command == 'publish-report') && github.token || '' }}
+        CRP_ACTION_PATH: ${{ github.action_path }}
+        CRP_EXECUTABLE: ${{ steps.install.outputs.executable }}
+        CRP_COMMAND: ${{ inputs.command }}
+        CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        CRP_BASE: ${{ inputs.base }}
+        CRP_CONFIG: ${{ inputs.config }}
+        CRP_SOURCE: ${{ inputs.source }}
+        CRP_PUBLICATION: ${{ inputs.publication }}
+        CRP_OUTPUT: ${{ inputs.output }}
+        CRP_DRY_RUN: ${{ inputs.dry-run }}
+        CRP_PREPARED: ${{ inputs.prepared }}
+        CRP_PLAN: ${{ inputs.plan }}
+        CRP_DENY_FINDINGS: ${{ inputs.deny-findings }}
+        CRP_BATCHES: ${{ inputs.batches }}
+        CRP_BATCH: ${{ inputs.batch }}
+        CRP_ARTIFACTS: ${{ inputs.artifacts }}
+        CRP_NO_UPLOAD: ${{ inputs.no-upload }}
+        CRP_OUTCOMES: ${{ inputs.outcomes }}
+        CRP_JOBS: ${{ inputs.jobs }}
+        CRP_REPOSITORY: ${{ inputs.repository }}
+        CRP_NO_ISSUE: ${{ inputs.no-issue }}
+      run: |
+        & "$env:CRP_ACTION_PATH/scripts/Invoke-ReleasePlan.ps1"

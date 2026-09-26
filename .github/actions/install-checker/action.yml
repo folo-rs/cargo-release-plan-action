@@ -1,0 +1,54 @@
+name: Install compatibility checker
+description: Cache only the exact external checker and installer, never a source-mode CRP executable.
+inputs:
+  install-method:
+    description: Controller installation mode; source mode still selects the published checker.
+    required: true
+  source-path:
+    description: Controller source checkout for installation settings.
+    required: true
+runs:
+  using: composite
+  steps:
+    - id: settings
+      shell: pwsh
+      env:
+        CHECKER_ACTION_PATH: ${{ github.action_path }}
+        INSTALL_METHOD: ${{ inputs.install-method }}
+        SOURCE_PATH: ${{ inputs.source-path }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = (Resolve-Path "$env:CHECKER_ACTION_PATH/../../..").Path
+        Import-Module "$root/scripts/Bootstrap.psm1"
+        $settings = Get-InstallationSettings -ActionPath $root -Method $env:INSTALL_METHOD -SourcePath $env:SOURCE_PATH -TemporaryDirectory $env:RUNNER_TEMP -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
+        $release = Get-Content "$root/release.json" -Raw | ConvertFrom-Json
+        $digest = (Get-FileHash "$root/release.json").Hash
+        "root=$($settings.Root)" >> $env:GITHUB_OUTPUT
+        "version=$($release.tools.'cargo-semver-checks'.version)" >> $env:GITHUB_OUTPUT
+        "key=crp-checker-$env:RUNNER_OS-$env:RUNNER_ARCH-$env:INSTALL_METHOD-$digest" >> $env:GITHUB_OUTPUT
+    - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      id: cache
+      with:
+        key: ${{ steps.settings.outputs.key }}
+        path: |
+          ${{ steps.settings.outputs.root }}/checker-${{ steps.settings.outputs.version }}
+          ${{ steps.settings.outputs.root }}/installer
+    - shell: pwsh
+      env:
+        CHECKER_ACTION_PATH: ${{ github.action_path }}
+        INSTALL_METHOD: ${{ inputs.install-method }}
+        SOURCE_PATH: ${{ inputs.source-path }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $root = (Resolve-Path "$env:CHECKER_ACTION_PATH/../../..").Path
+        Import-Module "$root/scripts/Bootstrap.psm1"
+        $settings = Get-InstallationSettings -ActionPath $root -Method $env:INSTALL_METHOD -SourcePath $env:SOURCE_PATH -TemporaryDirectory $env:RUNNER_TEMP -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
+        $checker = Install-CompatibilityChecker -ActionPath $root -Settings $settings
+        (Split-Path $checker) >> $env:GITHUB_PATH
+    - uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      if: steps.cache.outputs.cache-hit != 'true'
+      with:
+        key: ${{ steps.settings.outputs.key }}
+        path: |
+          ${{ steps.settings.outputs.root }}/checker-${{ steps.settings.outputs.version }}
+          ${{ steps.settings.outputs.root }}/installer

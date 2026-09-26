@@ -1,0 +1,101 @@
+name: Release readiness
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        default: .
+      config:
+        type: string
+        default: .cargo/release_plan.toml
+      install-method:
+        type: string
+        default: binstall
+      source-path:
+        type: string
+        default: .
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source:
+    uses: ./.github/workflows/action-source.yml
+  check:
+    needs: source
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: consumer
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ needs.source.outputs.sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action
+        id: tool
+        with:
+          command: version
+          install-method: ${{ inputs.install-method }}
+          source-path: consumer/${{ inputs.source-path }}
+          working-directory: consumer/${{ inputs.working-directory }}
+      - uses: ./consumer/.github/actions/release-plan-setup
+        id: setup
+        if: hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
+      - name: Resolve configured release history
+        id: context
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: release-context
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_CONFIG: ${{ inputs.config }}
+          CRP_BASE: ${{ contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.sha || '' }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./.release-plan-action/scripts/Workflow.psm1
+          $json = & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1 | Out-String
+          $context = Get-ContextRouting -Json $json -Repository $env:GITHUB_REPOSITORY
+          "base=$($context.release_base)" >> $env:GITHUB_OUTPUT
+          "scope=$($context.concurrency_group)" >> $env:GITHUB_OUTPUT
+      - name: Validate versions and publication configuration
+        id: readiness
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: check
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_CONFIG: ${{ inputs.config }}
+          CRP_BASE: ${{ steps.context.outputs.base }}
+        run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+      - name: Install exact external checker
+        id: checker
+        if: ${{ !cancelled() && steps.tool.outcome == 'success' && steps.context.outcome == 'success' && (steps.setup.outcome == 'success' || steps.setup.outcome == 'skipped') }}
+        uses: ./.release-plan-action/.github/actions/install-checker
+        with:
+          install-method: ${{ inputs.install-method }}
+          source-path: consumer/${{ inputs.source-path }}
+      - name: Enforce captured-source API compatibility
+        if: ${{ !cancelled() && steps.context.outcome == 'success' && steps.checker.outcome == 'success' }}
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: check-compatibility
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_BASE: ${{ steps.context.outputs.base }}
+          CRP_DENY_FINDINGS: 'true'
+          CRP_OUTPUT: ${{ runner.temp }}/compatibility
+        run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.context.outputs.scope != ''
+        with:
+          name: crp-check-${{ steps.context.outputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/compatibility
+          if-no-files-found: warn

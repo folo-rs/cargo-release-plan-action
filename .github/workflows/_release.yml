@@ -1,0 +1,341 @@
+name: Execute frozen publication
+
+on:
+  workflow_call:
+    inputs:
+      working-directory:
+        type: string
+        required: true
+      config:
+        type: string
+        required: true
+      install-method:
+        type: string
+        required: true
+      source-path:
+        type: string
+        required: true
+      publishing-environment:
+        type: string
+        default: ''
+      source:
+        type: string
+        required: true
+      scope:
+        type: string
+        required: true
+      platforms:
+        type: string
+        required: true
+      action-sha:
+        type: string
+        required: true
+      controller-id:
+        type: string
+        required: true
+      controller-version:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ inputs.action-sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/restore-controller
+        id: tool
+        with:
+          artifact-id: ${{ inputs.controller-id }}
+          version: ${{ inputs.controller-version }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source }}
+          path: consumer
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: ./consumer/.github/actions/release-plan-setup
+        if: hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
+      - name: Restore original intent on reruns
+        if: github.run_attempt > 1
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/intent
+      - name: Prepare or verify the original immutable manifest
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: prepare-publish
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_CONFIG: ${{ inputs.config }}
+          CRP_SOURCE: ${{ inputs.source }}
+          CRP_OUTPUT: ${{ runner.temp }}/intent/publication.json
+        run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: github.run_attempt == 1
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
+          path: ${{ runner.temp }}/intent/publication.json
+          if-no-files-found: error
+  registry:
+    needs: prepare
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.publishing-environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ inputs.action-sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/restore-controller
+        id: tool
+        with:
+          artifact-id: ${{ inputs.controller-id }}
+          version: ${{ inputs.controller-version }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source }}
+          path: consumer
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/intent
+      - uses: ./consumer/.github/actions/release-plan-setup
+        if: hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
+      - name: Complete the registry prerequisite
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: publish-registry
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_PUBLICATION: ${{ runner.temp }}/intent/publication.json
+          CRP_OUTPUT: ${{ runner.temp }}/registry/outcome.json
+          CRP_DRY_RUN: 'false'
+        run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-registry-outcome
+          path: ${{ runner.temp }}/registry/outcome.json
+          if-no-files-found: warn
+  github:
+    needs: registry
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ inputs.action-sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/restore-controller
+        id: tool
+        with:
+          artifact-id: ${{ inputs.controller-id }}
+          version: ${{ inputs.controller-version }}
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source }}
+          path: consumer
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/intent
+      - name: Reconcile tags and discover current native batches
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: publish-github
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_PUBLICATION: ${{ runner.temp }}/intent/publication.json
+          CRP_OUTPUT: ${{ runner.temp }}/github/outcome.json
+          CRP_BATCHES: ${{ runner.temp }}/github/batches
+          CRP_DRY_RUN: 'false'
+        run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        if: always() && !cancelled()
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-github-outcome
+          path: ${{ runner.temp }}/github
+          if-no-files-found: warn
+  binaries:
+    needs: [registry, github]
+    # Stable native slots are intentional: a failed GitHub job's rerun must discover
+    # newly unblocked batches even if its original output contained no matrix entries.
+    if: ${{ always() && !cancelled() && needs.registry.result == 'success' && (needs.github.result == 'success' || needs.github.result == 'failure') && needs.github.outputs.artifact-id != '' }}
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(inputs.platforms) }}
+    runs-on: ${{ matrix.runner }}
+    permissions:
+      contents: write
+      actions: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ inputs.action-sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/intent
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          artifact-ids: ${{ needs.github.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/github
+      - name: Select this slot's frozen batch
+        id: batch
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./.release-plan-action/scripts/Workflow.psm1
+          $batch = Get-BatchRouting -Outcome "$env:RUNNER_TEMP/github/outcome.json" -Publication "$env:RUNNER_TEMP/intent/publication.json" -Batches "$env:RUNNER_TEMP/github/batches" -Target $env:TARGET
+          if ($batch) { "path=$batch" >> $env:GITHUB_OUTPUT }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.batch.outputs.path != ''
+        with:
+          ref: ${{ inputs.source }}
+          path: consumer
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.batch.outputs.path != '' && inputs.install-method == 'path'
+        with:
+          ref: ${{ github.sha }}
+          path: invocation
+          persist-credentials: false
+      - uses: ./.release-plan-action
+        if: steps.batch.outputs.path != ''
+        id: tool
+        with:
+          command: version
+          install-method: ${{ inputs.install-method }}
+          source-path: invocation/${{ inputs.source-path }}
+          working-directory: consumer/${{ inputs.working-directory }}
+      - uses: ./consumer/.github/actions/release-plan-setup
+        if: steps.batch.outputs.path != '' && hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
+      - name: Publish the exact tag-bound native batch
+        if: steps.batch.outputs.path != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: publish-binaries
+          CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
+          CRP_PUBLICATION: ${{ runner.temp }}/intent/publication.json
+          CRP_BATCH: ${{ steps.batch.outputs.path }}
+          CRP_OUTPUT: ${{ runner.temp }}/binary/outcome.json
+          CRP_ARTIFACTS: ${{ runner.temp }}/staged
+          CRP_NO_UPLOAD: 'false'
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-build
+        run: |
+          & ./.release-plan-action/scripts/Install-ArchiveTools.ps1
+          & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always() && steps.batch.outputs.path != ''
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-binaries-${{ matrix.target }}-outcome
+          path: ${{ runner.temp }}/binary/outcome.json
+          if-no-files-found: warn
+  report:
+    needs: [prepare, registry, github, binaries]
+    if: always()
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ inputs.action-sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/restore-controller
+        id: tool
+        with:
+          artifact-id: ${{ inputs.controller-id }}
+          version: ${{ inputs.controller-version }}
+      - name: Retrieve original intent if retained
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/intent
+      - name: Retrieve retained phase outcomes without merging their directories
+        id: receipts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        continue-on-error: true
+        with:
+          pattern: crp-${{ inputs.scope }}-${{ github.run_id }}-*-outcome
+          merge-multiple: false
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/outcomes
+      - name: Reconcile actual job results and write the final report
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NEEDS_JSON: ${{ toJSON(needs) }}
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: publish-report
+          CRP_REPOSITORY: ${{ github.repository }}
+          CRP_PUBLICATION: ${{ runner.temp }}/intent/publication.json
+          CRP_OUTCOMES: ${{ runner.temp }}/${{ steps.receipts.outcome == 'success' && 'outcomes' || 'unavailable-outcomes' }}
+          CRP_JOBS: ${{ runner.temp }}/jobs.json
+          CRP_OUTPUT: ${{ runner.temp }}/report.md
+          CRP_NO_ISSUE: 'false'
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./.release-plan-action/scripts/Workflow.psm1
+          Write-JobResults -NeedsJson $env:NEEDS_JSON -Output $env:CRP_JOBS
+          & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+      - name: Expose the report even when delivery failed
+        if: always()
+        shell: pwsh
+        run: |
+          if (Test-Path "$env:RUNNER_TEMP/report.md") {
+              Get-Content "$env:RUNNER_TEMP/report.md" -Raw >> $env:GITHUB_STEP_SUMMARY
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: crp-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-report
+          path: ${{ runner.temp }}/report.md
+          if-no-files-found: warn

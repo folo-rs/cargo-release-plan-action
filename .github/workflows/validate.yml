@@ -1,0 +1,69 @@
+name: Validate action
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_call:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  acceptance:
+    name: Action validation
+    needs: [identity, tests, workflows]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          $results = $env:RESULTS | ConvertFrom-Json -AsHashtable
+          if (@($results.Values | Where-Object result -NE 'success').Count) {
+              throw 'Action tests, exact identity and workflow validation must all succeed.'
+          }
+  identity:
+    uses: ./.github/workflows/identity.yml
+    with:
+      expected-sha: ${{ github.sha }}
+  tests:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, windows-2025, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install test tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser
+      - name: Test bootstrap
+        shell: pwsh
+        run: |
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester -Path tests -CI -Output Detailed
+  workflows:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check workflow syntax
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:GOBIN = Join-Path $env:RUNNER_TEMP 'actionlint'
+          go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot install actionlint.' }
+          # v1.7.12 predates queue:max. Only this unsupported-key diagnostic is excluded;
+          # Workflow.Tests.ps1 verifies the exact value; scheduling-canary proves hosted support.
+          # https://docs.github.com/en/actions/how-tos/write-workflows/choose-when-workflows-run/control-workflow-concurrency
+          & "$env:GOBIN/actionlint" -color -ignore '^unexpected key "queue" for "concurrency" section\.'
+          if ($LASTEXITCODE -ne 0) { throw 'Workflow validation failed.' }
