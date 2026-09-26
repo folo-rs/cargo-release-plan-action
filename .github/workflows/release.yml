@@ -18,6 +18,10 @@ on:
       publishing-environment:
         type: string
         default: ''
+      source:
+        description: Optional full commit SHA for explicit-source recovery in a new run.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -38,14 +42,27 @@ jobs:
     steps:
       - name: Require an explicit release trigger
         shell: pwsh
+        env:
+          RECOVERY_SOURCE: ${{ inputs.source }}
         run: |
+          if ($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) { throw 'Controller installation must not receive OIDC.' }
           if ($env:GITHUB_EVENT_NAME -notin @('push', 'workflow_dispatch')) {
               throw 'Publication requires a push or manual release invocation, not a pull-request event.'
           }
+          if ($env:RECOVERY_SOURCE -and $env:RECOVERY_SOURCE -cnotmatch '^[0-9a-f]{40}$') {
+              throw 'Explicit-source recovery requires a full immutable commit SHA.'
+          }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ inputs.source || github.sha }}
           path: consumer
           fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: inputs.install-method == 'path'
+        with:
+          ref: ${{ github.sha }}
+          path: invocation
           persist-credentials: false
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -58,7 +75,7 @@ jobs:
         with:
           command: version
           install-method: ${{ inputs.install-method }}
-          source-path: consumer/${{ inputs.source-path }}
+          source-path: invocation/${{ inputs.source-path }}
           working-directory: consumer/${{ inputs.working-directory }}
       - name: Resolve source and complete-release lock
         id: context

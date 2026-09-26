@@ -86,9 +86,8 @@ the selected release checkout, independently of `source-path` used to install th
 controller. Rust acquires release-branch history, validates the clean source and
 creates or verifies the immutable publication file. The action does not parse
 its human summary, fetch branch tips or rewrite its JSON.
-Only the preparation invocation exports `github.token` as `GH_TOKEN`, enabling
-the application's per-command GitHub CLI credential helper to read private
-repositories. Installation and offline invocation do not receive this credential
+GitHub-facing invocations export `github.token` as `GH_TOKEN` for their scoped
+operations. Installation and offline invocation do not receive this credential
 from the action.
 
 The hosted consumer canary uses a disposable, tracked Cargo library and
@@ -127,3 +126,53 @@ uniquely named fixture package, checks `would_publish` without completion,
 verifies that retry cannot overwrite an existing outcome and distinguishes
 missing input from a valid failed-attempt receipt. No live upload or credential
 exchange is part of this action-side proof.
+
+## Reusable job graphs
+
+`check.yml` resolves configured release history through the installed controller,
+checks versions and publication inputs, then invokes `check-compatibility` with
+the same immutable baseline and `--deny-findings`. Rust captures and verifies the
+actual source for that comparison. Fork pull requests use ordinary read-only
+execution, never `pull_request_target`.
+
+`release.yml` captures source and the Rust-generated workspace concurrency group.
+Its calling job holds `queue: max` with cancellation disabled around the complete
+nested `_release.yml` execution. Phase jobs do not acquire separate locks.
+`source` is an optional immutable recovery override, never a missing-artifact
+fallback. Each new invocation captures its own intent. A separate invocation
+checkout remains at `github.sha` for source-mode controller installation,
+including historical-source recovery; `source` only selects release content.
+
+The read-only context job installs the Linux controller once and transfers it by
+exact artifact ID. Registry and GitHub/report jobs restore that controller instead
+of compiling source with OIDC authority. Native binary slots install their own
+platform controller only when their routing receipt requests a batch.
+
+Preparation uploads one immutable manifest per workspace/run. Reruns require and
+verify that artifact rather than rebuilding intent from current main. Registry
+success is a hard dependency for GitHub reconciliation. Reconciliation retains
+its failure status but uploads its partial outcome and valid frozen batches.
+
+Native routing slots come from the release manifest's fixed supported platform
+table, not from a potentially empty first-attempt batch output. This ensures a
+failed reconciliation retry schedules newly unblocked targets. Each slot selects
+its current batch from the exact producer artifact, validating only routing
+linkage; Rust verifies the batch content identity and actual tag sources.
+No-batch slots do no controller install, consumer checkout or compilation.
+
+Attempt-qualified outcomes use distinct artifact names and retain `outcome.json`
+inside separate download directories. The final reporter receives actual
+`needs` result strings plus all retained receipts. A failed artifact download is
+not treated as complete evidence; missing or unreadable intent remains explicit.
+Only reporter download steps may continue after errors so Rust can emit the
+incomplete report. No publishing phase uses `continue-on-error`.
+
+The fixed optional consumer setup action runs before Cargo verification/build
+operations. It must not modify source. Windows standalone archive tooling is
+obtained from a pinned official checksum, using the same minimal installation
+contract as Folo's archive bootstrap and preserving the upstream license.
+
+The pinned actionlint predates GitHub's supported `concurrency.queue` property.
+Only its exact unsupported-key diagnostic is excluded. Unit tests assert
+`queue: max` plus noncancellation and a read-only hosted scheduling fixture
+exercises nested queued executions and partial-result artifact routing.

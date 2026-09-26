@@ -233,13 +233,19 @@ jobs:
           path: consumer
           fetch-depth: 0
           persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        if: steps.batch.outputs.path != '' && inputs.install-method == 'path'
+        with:
+          ref: ${{ github.sha }}
+          path: invocation
+          persist-credentials: false
       - uses: ./.release-plan-action
         if: steps.batch.outputs.path != ''
         id: tool
         with:
           command: version
           install-method: ${{ inputs.install-method }}
-          source-path: consumer/${{ inputs.source-path }}
+          source-path: invocation/${{ inputs.source-path }}
           working-directory: consumer/${{ inputs.working-directory }}
       - uses: ./consumer/.github/actions/release-plan-setup
         if: steps.batch.outputs.path != '' && hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
@@ -256,6 +262,7 @@ jobs:
           CRP_OUTPUT: ${{ runner.temp }}/binary/outcome.json
           CRP_ARTIFACTS: ${{ runner.temp }}/staged
           CRP_NO_UPLOAD: 'false'
+          CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-build
         run: |
           & ./.release-plan-action/scripts/Install-ArchiveTools.ps1
           & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1

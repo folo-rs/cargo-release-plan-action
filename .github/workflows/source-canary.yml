@@ -4,6 +4,7 @@ on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
 
 permissions:
   contents: read
@@ -87,13 +88,10 @@ jobs:
           }
       - name: Install the pinned external compatibility checker
         if: matrix.runner == 'ubuntu-24.04'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Import-Module ./scripts/Bootstrap.psm1
-          $settings = Get-InstallationSettings -ActionPath $env:GITHUB_WORKSPACE -Method path -SourcePath .source -TemporaryDirectory $env:RUNNER_TEMP -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
-          $checker = Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
-          (Split-Path $checker) >> $env:GITHUB_PATH
+        uses: ./.github/actions/install-checker
+        with:
+          install-method: path
+          source-path: .source
       - name: Exercise read-only consumer operations
         if: matrix.runner == 'ubuntu-24.04'
         shell: pwsh

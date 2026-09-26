@@ -7,6 +7,8 @@ Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
 $work = Join-Path $env:RUNNER_TEMP "release-native-canary-$([guid]::NewGuid().ToString('N'))"
 $source = Join-Path $work 'source'
 $artifacts = Join-Path $work 'artifacts'
+$originalTargetDirectory = $env:CARGO_TARGET_DIR
+$env:CARGO_TARGET_DIR = Join-Path $work 'cargo-build'
 $target = switch ("$env:RUNNER_OS-$env:RUNNER_ARCH") {
     Linux-X64 { 'x86_64-unknown-linux-gnu' }
     Linux-ARM64 { 'aarch64-unknown-linux-gnu' }
@@ -71,9 +73,11 @@ targets = ["$target"]
     if (@($files | Where-Object Extension -EQ '.zip').Count -ne 1 -or @($files | Where-Object Extension -EQ '.sha256').Count -ne 1) {
         throw 'Native staging did not produce the ZIP and checksum pair.'
     }
-    if (Invoke-BootstrapCommand git @('-C', $source, 'status', '--porcelain')) { throw 'Binary staging changed source.' }
+    $status = Invoke-BootstrapCommand git @('-C', $source, 'status', '--porcelain')
+    if ($status) { throw "Binary staging changed source: $status" }
     Write-Output "Frozen batch staged ZIP/checksum successfully on $target without GitHub queries or uploads."
 }
 finally {
+    $env:CARGO_TARGET_DIR = $originalTargetDirectory
     if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force }
 }

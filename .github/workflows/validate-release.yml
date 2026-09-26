@@ -1,0 +1,51 @@
+name: Validate action release candidate
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Exact action_version from release.json; this workflow publishes nothing.
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  version:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - shell: pwsh
+        env:
+          EXPECTED: ${{ inputs.version }}
+        run: |
+          $release = Get-Content release.json -Raw | ConvertFrom-Json
+          if ($release.action_version -cne $env:EXPECTED) { throw 'Candidate version does not match its release manifest.' }
+  validation:
+    needs: version
+    uses: ./.github/workflows/validate.yml
+  source:
+    needs: version
+    uses: ./.github/workflows/source-canary.yml
+  published:
+    needs: version
+    uses: ./.github/workflows/published-installation.yml
+  scheduling:
+    needs: version
+    uses: ./.github/workflows/scheduling-canary.yml
+  candidate:
+    needs: [validation, source, published, scheduling]
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        run: |
+          $results = $env:RESULTS | ConvertFrom-Json -AsHashtable
+          if (@($results.Values | Where-Object result -NE 'success').Count) { throw 'Candidate acceptance did not pass.' }
+          'Candidate validation passed. Live-pilot acceptance and human release authorization remain separate; no tags or release were published.' >> $env:GITHUB_STEP_SUMMARY

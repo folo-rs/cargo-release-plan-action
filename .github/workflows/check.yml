@@ -46,6 +46,7 @@ jobs:
           source-path: consumer/${{ inputs.source-path }}
           working-directory: consumer/${{ inputs.working-directory }}
       - uses: ./consumer/.github/actions/release-plan-setup
+        id: setup
         if: hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
       - name: Resolve configured release history
         id: context
@@ -56,6 +57,7 @@ jobs:
           CRP_COMMAND: release-context
           CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
           CRP_CONFIG: ${{ inputs.config }}
+          CRP_BASE: ${{ contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.sha || '' }}
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module ./.release-plan-action/scripts/Workflow.psm1
@@ -64,6 +66,7 @@ jobs:
           "base=$($context.release_base)" >> $env:GITHUB_OUTPUT
           "scope=$($context.concurrency_group)" >> $env:GITHUB_OUTPUT
       - name: Validate versions and publication configuration
+        id: readiness
         shell: pwsh
         env:
           CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
@@ -73,18 +76,14 @@ jobs:
           CRP_BASE: ${{ steps.context.outputs.base }}
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
       - name: Install exact external checker
-        shell: pwsh
-        env:
-          INSTALL_METHOD: ${{ inputs.install-method }}
-          SOURCE_PATH: consumer/${{ inputs.source-path }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          Import-Module ./.release-plan-action/scripts/Bootstrap.psm1
-          $action = Join-Path $env:GITHUB_WORKSPACE '.release-plan-action'
-          $settings = Get-InstallationSettings -ActionPath $action -Method $env:INSTALL_METHOD -SourcePath $env:SOURCE_PATH -TemporaryDirectory $env:RUNNER_TEMP -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
-          $checker = Install-CompatibilityChecker -ActionPath $action -Settings $settings
-          (Split-Path $checker) >> $env:GITHUB_PATH
+        id: checker
+        if: ${{ !cancelled() && steps.tool.outcome == 'success' && steps.context.outcome == 'success' && (steps.setup.outcome == 'success' || steps.setup.outcome == 'skipped') }}
+        uses: ./.release-plan-action/.github/actions/install-checker
+        with:
+          install-method: ${{ inputs.install-method }}
+          source-path: consumer/${{ inputs.source-path }}
       - name: Enforce captured-source API compatibility
+        if: ${{ !cancelled() && steps.context.outcome == 'success' && steps.checker.outcome == 'success' }}
         shell: pwsh
         env:
           CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}

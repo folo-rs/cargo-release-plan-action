@@ -77,26 +77,18 @@ jobs:
           ref: ${{ needs.source.outputs.sha }}
           path: .release-plan-action
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - uses: ./.release-plan-action/.github/actions/restore-controller
+        id: tool
         with:
-          artifact-ids: ${{ needs.controller.outputs.artifact-id }}
-          path: ${{ runner.temp }}/controller
-          github-token: ${{ github.token }}
-      - name: Verify controller and exchange then revoke the credential
+          artifact-id: ${{ needs.controller.outputs.artifact-id }}
+          version: ${{ needs.controller.outputs.version }}
+      - name: Exchange then immediately revoke the credential
         shell: pwsh
         env:
-          EXPECTED_VERSION: ${{ needs.controller.outputs.version }}
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
           CRP_COMMAND: check-publishing-identity
         run: |
           $ErrorActionPreference = 'Stop'
-          $directory = Join-Path $env:RUNNER_TEMP 'controller'
-          tar -xf "$directory/controller.tar" -C $directory
-          if ($LASTEXITCODE -ne 0) { throw 'Cannot extract controller executable.' }
-          $env:CRP_EXECUTABLE = Join-Path $directory 'cargo-release-plan'
-          $version = & $env:CRP_EXECUTABLE --version
-          if ($LASTEXITCODE -ne 0 -or $version -cne "cargo-release-plan $env:EXPECTED_VERSION") {
-              throw 'Transferred controller identity differs from the installed executable.'
-          }
           if (-not $env:ACTIONS_ID_TOKEN_REQUEST_URL -or -not $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
               throw 'Probe job requires GitHub OIDC authority.'
           }

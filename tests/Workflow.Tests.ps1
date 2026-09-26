@@ -86,6 +86,9 @@ Describe 'Release graph invariants' {
         $workflow | Should -Match 'CRP_COMMAND: check\r?\n'
         $workflow | Should -Match 'CRP_COMMAND: check-compatibility'
         $workflow | Should -Match 'CRP_DENY_FINDINGS: ''true'''
+        $workflow | Should -Match 'steps.checker.outcome == ''success'''
+        $workflow | Should -Not -Match 'steps.readiness.outcome == ''success'''
+        $workflow | Should -Match ([regex]::Escape('contains(fromJSON(''["push","schedule","workflow_dispatch"]''), github.event_name) && github.sha'))
     }
 
     It 'preserves failed reconciliation while allowing registry-gated independent batches' {
@@ -114,5 +117,15 @@ Describe 'Release graph invariants' {
         $workflow | Should -Match 'if: github.run_attempt > 1'
         $workflow | Should -Match 'if: github.run_attempt == 1'
         $workflow | Should -Not -Match 'overwrite: true'
+    }
+
+    It 'separates historical release source from invocation controller code' {
+        $outer = Get-Content "$PSScriptRoot/../.github/workflows/release.yml" -Raw
+        $inner = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
+        $outer | Should -Match ([regex]::Escape('ref: ${{ inputs.source || github.sha }}'))
+        foreach ($workflow in @($outer, $inner)) {
+            $workflow | Should -Match 'ref: \$\{\{ github.sha \}\}\r?\n\s+path: invocation'
+            $workflow | Should -Match 'source-path: invocation/\$\{\{ inputs.source-path \}\}'
+        }
     }
 }
