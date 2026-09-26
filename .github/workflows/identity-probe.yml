@@ -30,6 +30,7 @@ jobs:
       - name: Require an unprivileged installation job
         shell: pwsh
         run: |
+          if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch') { throw 'The setup identity probe requires a manual caller invocation.' }
           if ($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) { throw 'Controller installation must not receive OIDC authority.' }
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

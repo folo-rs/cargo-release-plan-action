@@ -99,7 +99,8 @@ or receiving OIDC authority.
 ## Publishing identity probe
 
 The public `identity-probe.yml` workflow builds or installs the controller without
-OIDC. A tar artifact preserves its executable mode and exact executable version
+OIDC and requires a manual caller invocation before installing that controller.
+A tar artifact preserves its executable mode and exact executable version
 across jobs. The probe downloads that artifact by its exact ID, verifies the
 application version and invokes the workspace-free identity command. Only this
 job has `id-token: write` and the optional publishing environment. It performs no

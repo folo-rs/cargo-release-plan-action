@@ -83,6 +83,7 @@ Describe 'Action command forwarding' {
         $probe = $workflow.IndexOf('  probe:', [StringComparison]::Ordinal)
         $probe | Should -BeGreaterThan 0
         $workflow.Substring(0, $probe) | Should -Not -Match 'id-token:'
+        $workflow.Substring(0, $probe) | Should -Match 'GITHUB_EVENT_NAME -ne ''workflow_dispatch'''
         $workflow.Substring($probe) | Should -Match 'id-token: write'
         $workflow.Substring($probe) | Should -Not -Match 'command: version|Bootstrap.ps1|cargo install'
         $workflow | Should -Not -Match 'workflow_dispatch:|contents: write'
