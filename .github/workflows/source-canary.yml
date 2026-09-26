@@ -34,8 +34,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: folo-rs/folo
-          # This reviewed registry checkpoint is not a published tool pin.
-          ref: 70e69a525d4017d7659307d315a0b4d57ee93162
+          # This reviewed full-command checkpoint is not published-installation evidence.
+          ref: 7ae0c2ff8014aeaa3da6b9fcb0fe1f7e1b9da7e9
           path: .source
           persist-credentials: false
       - uses: ./
@@ -76,6 +76,8 @@ jobs:
           foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
               if (-not $help.Contains($flag)) { throw "Source registry operation does not expose $flag." }
           }
+          & $env:CRP_EXECUTABLE check-publishing-identity --help
+          if ($LASTEXITCODE -ne 0) { throw 'Source identity probe help failed.' }
       - name: Exercise read-only consumer operations
         if: matrix.runner == 'ubuntu-24.04'
         shell: pwsh

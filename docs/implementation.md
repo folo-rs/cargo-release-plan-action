@@ -97,6 +97,16 @@ preparation path. It checks envelope source linkage, unchanged output on repeate
 preparation and a clean source afterward, without contacting a registry writer
 or receiving OIDC authority.
 
+## Publishing identity probe
+
+The public `identity-probe.yml` workflow builds or installs the controller without
+OIDC. A tar artifact preserves its executable mode and exact executable version
+across jobs. The probe downloads that artifact by its exact ID, verifies the
+application version and invokes the workspace-free identity command. Only this
+job has `id-token: write` and the optional publishing environment. It performs no
+source compilation or package upload. The platform's caller identity remains
+the consumer workflow, including when this workflow is invoked from `release.yml`.
+
 ## Registry invocation
 
 `publish-registry` forwards `publish registry`, the immutable publication path,

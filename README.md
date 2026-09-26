@@ -96,6 +96,21 @@ claim support for the unified protocol. It is never a production fallback.
 
 ## Release acceptance
 
+The setup-only `.github/workflows/identity-probe.yml` installs its controller in a
+read-only job, then transfers the exact executable to a separate job with
+`id-token: write`. That job calls `check-publishing-identity` to exchange and
+immediately revoke a crates.io credential without uploading a package. It accepts
+`install-method`, `source-path` and optional `publishing-environment`.
+When the Trusted Publisher registration specifies an environment, this input must
+name that environment. Run one setup probe per workflow run.
+
+Invoke the probe from the consumer's registered `release.yml` with its normal
+publisher disabled for that invocation. The caller grants `contents: read`,
+`actions: read` and `id-token: write`; the reusable workflow limits OIDC to its
+probe job. Successful exchange does not prove every package's publishing grant.
+The root `check-publishing-identity` command is also available to callers that
+manage their own installation and permission boundaries.
+
 `Published installation / manifest` deliberately fails while production pins are
 unavailable. Source installation and unit-test fixtures cannot make that check
 pass. With finalized pins, isolated jobs verify published-source installation,

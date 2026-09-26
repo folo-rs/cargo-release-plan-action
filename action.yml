@@ -2,7 +2,7 @@ name: Cargo release plan
 description: Install and invoke the exact cargo-release-plan selected by this action.
 inputs:
   command:
-    description: Operation to execute (version, version-readiness, check, prepare-publish, or publish-registry).
+    description: Operation to execute; see README for supported release commands.
     required: true
   working-directory:
     description: Cargo workspace directory relative to the caller checkout.

@@ -6,6 +6,9 @@ switch ($env:CRP_COMMAND) {
     version {
         Invoke-BootstrapCommand $env:CRP_EXECUTABLE @('--version')
     }
+    check-publishing-identity {
+        Invoke-BootstrapCommand $env:CRP_EXECUTABLE @('check-publishing-identity')
+    }
     { $_ -in @('version-readiness', 'check') } {
         if ($env:CRP_BASE -cnotmatch '^[0-9a-f]{40}$') {
             throw "$env:CRP_COMMAND requires an explicit immutable base commit."

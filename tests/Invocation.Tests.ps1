@@ -54,6 +54,27 @@ Describe 'Action command forwarding' {
         Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
             $Executable -eq $env:CRP_EXECUTABLE -and $Arguments.Count -eq 1 -and $Arguments[0] -eq '--version'
         }
+
+    }
+
+    It 'probes publishing identity without selecting a workspace or requesting uploads' {
+        $env:CRP_COMMAND = 'check-publishing-identity'
+        $env:CRP_WORKING_DIRECTORY = 'missing'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            $Executable -eq $env:CRP_EXECUTABLE -and
+            ($Arguments -join '|') -eq 'check-publishing-identity'
+        }
+    }
+
+    It 'keeps source installation outside the only OIDC-enabled probe job' {
+        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/identity-probe.yml" -Raw
+        $probe = $workflow.IndexOf('  probe:', [StringComparison]::Ordinal)
+        $probe | Should -BeGreaterThan 0
+        $workflow.Substring(0, $probe) | Should -Not -Match 'id-token:'
+        $workflow.Substring($probe) | Should -Match 'id-token: write'
+        $workflow.Substring($probe) | Should -Not -Match 'command: version|Bootstrap.ps1|cargo install'
+        $workflow | Should -Not -Match 'workflow_dispatch:|contents: write'
     }
 
     It 'keeps queue readiness narrow with the explicit baseline and selected workspace' {
