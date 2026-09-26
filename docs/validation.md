@@ -3,8 +3,26 @@
 ## Scope
 
 This evidence verifies exact action-source selection and tool bootstrap. It does
-not establish the full compatibility gate, published installation, OIDC exchange,
-registry upload or production delivery.
+not establish published installation, registry upload or production delivery.
+The external readiness and setup identity cases below exercise their specific
+live integrations without granting a package-upload success claim.
+
+## External readiness and publishing identity
+
+[Folo run 36215204197](https://github.com/folo-rs/folo/actions/runs/36215204197)
+invokes `identity-probe.yml` at
+e4d98d54c913f41866774670a3e27236ddc1d5dd from the registered consumer
+`release.yml`. Its controller job has no OIDC permission; the separate probe
+exchanges the caller identity with crates.io and immediately revokes the temporary
+credential. The consumer's ordinary publish, planning, native build and alert
+jobs are explicitly skipped. This is real exchange/revocation evidence, not a
+proof of every package's grant or any upload.
+
+[Folo run 36215945180](https://github.com/folo-rs/folo/actions/runs/36215945180)
+uses action 512ff6afc7e101f21243b15ed7dbedddc2ac052d to run the public
+`check.yml` workflow. Release-context resolution, version/publication-input
+validation, exact external checker installation and captured-source API
+compatibility all execute successfully against the consumer repository.
 
 ## Hosted workflow identity
 
@@ -106,6 +124,46 @@ registry upload or completion of the full release process.
 passes the registry adapter's regression suite on Linux, Windows and macOS,
 workflow validation and exact current-revision identity verification.
 
+## Complete non-live command and native staging coverage
+
+[Run 36216624842](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36216624842)
+uses action e34f5027b7ae4755590204440cdb392bd2c2acfd. Every supported
+native runner installs the controller and stages an actual frozen binary batch
+without uploads. The batch produces a ZIP/checksum pair, remains explicitly
+`no_upload` and incomplete as a delivery receipt, and leaves source clean.
+Build output uses an absolute `CARGO_TARGET_DIR` outside source. Windows jobs use
+the pinned standalone 7-Zip extra archive, including ARM64's emulated x64 tool.
+
+The Linux job also installs the exact external checker, executes its real
+self-comparison through CRP, records an unavailable comparison without inventing
+compatibility, checks the GitHub phase's full registry prerequisite and exercises
+both incomplete and valid empty-work reports without issue writes.
+
+[Run 36216625025](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36216625025)
+completes queued nested executions under one supported `queue: max` group without
+cancelling queued work. Its synthetic artifacts exercise the production routing
+helper; this is a scheduling proof, not a substitute for the command/native tests.
+
+### Failed producer and native-only reruns
+
+[Run 36216622141, attempt 1](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36216622141/attempts/1)
+deliberately fails a synthetic reconciliation job after it writes usable routing
+artifacts. Its independent native slots still execute; the producer's failure
+remains visible. A separate queued execution deliberately fails only one native
+slot after a successful producer. Queued executions are not cancelled.
+
+[Attempt 2](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36216622141/attempts/2)
+reruns the failed work successfully. The previously blocked target downloads the
+new producer artifact from attempt 2 and is now requested. The native-only retry
+downloads its successful producer artifact from attempt 1. This verifies both
+failed-job output propagation and retained successful-job artifact IDs without a
+second artifact-resolution mechanism.
+
+The temporary caller is retained in commit
+e34f5027b7ae4755590204440cdb392bd2c2acfd for reproduction; it is removed
+from the ongoing check graph after the proof. The reusable scheduling fixture
+has no source compilation, registry writes, tag writes or OIDC authority.
+
 ## Regression and release gates
 
 [Run 36192210190](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36192210190)
@@ -117,3 +175,10 @@ fails explicitly because the root `release.json` is absent. This is the expected
 release blocker, not a passing installation result. Test fixture pins and source
 canaries cannot satisfy it. Remaining product acceptance is tracked in
 [release acceptance](../TODO.md).
+
+With the selected production candidate manifest present,
+[run 36215690642](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36215690642)
+fails actual installation: Cargo reports that `cargo-release-plan` version
+`=0.4.1` is unavailable from crates.io. This is a publication dependency, not
+source-mode acceptance. Enforcement of the separate check requires the
+repository-side configuration described in [maintainer setup](setup.md).

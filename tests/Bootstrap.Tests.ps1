@@ -42,7 +42,7 @@ Describe 'Installation selection' {
 
     It 'rejects an unavailable release manifest rather than using test pins' {
         Remove-Item (Join-Path $script:Parameters.ActionPath 'release.json')
-        { Get-InstallationSettings @script:Parameters } | Should -Throw '*Released installation is blocked*'
+        { Get-InstallationSettings @script:Parameters } | Should -Throw '*Action installation is blocked*'
     }
 
     It 'rejects floating versions and unsupported manifest schemas' -ForEach @(
@@ -59,8 +59,7 @@ Describe 'Installation selection' {
         { Get-InstallationSettings @script:Parameters } | Should -Throw '*Unsupported native platform*'
     }
 
-    It 'selects source without a release manifest or released cache' {
-        Remove-Item (Join-Path $script:Parameters.ActionPath 'release.json')
+    It 'selects source independently of released executable pins and caches' {
         $package = Join-Path $script:Parameters.SourcePath 'packages/cargo-release-plan'
         New-Item $package -ItemType Directory -Force | Out-Null
         '' | Set-Content (Join-Path $package 'Cargo.toml')
@@ -70,6 +69,16 @@ Describe 'Installation selection' {
         $settings.Version | Should -BeNullOrEmpty
         $settings.Root | Should -Be (Join-Path $TestDrive 'cargo-release-plan-source')
         $settings.Toolchain | Should -Be '1.98.1'
+    }
+
+    It 'takes the source-install compiler from the same release manifest' {
+        $package = Join-Path $script:Parameters.SourcePath 'packages/cargo-release-plan'
+        New-Item $package -ItemType Directory -Force | Out-Null
+        '' | Set-Content (Join-Path $package 'Cargo.toml')
+        $manifestPath = Join-Path $script:Parameters.ActionPath 'release.json'
+        (Get-Content $manifestPath -Raw).Replace('1.98.1', '1.99.0') | Set-Content $manifestPath
+        $script:Parameters.Method = 'path'
+        (Get-InstallationSettings @script:Parameters).Toolchain | Should -Be '1.99.0'
     }
 }
 

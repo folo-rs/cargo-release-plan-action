@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 jobs:
   acceptance:
@@ -35,7 +36,7 @@ jobs:
         with:
           repository: folo-rs/folo
           # This reviewed full-command checkpoint is not published-installation evidence.
-          ref: 7ae0c2ff8014aeaa3da6b9fcb0fe1f7e1b9da7e9
+          ref: 00a47b9e8b36b226174b51018f29f8626b7de30c
           path: .source
           persist-credentials: false
       - uses: ./
@@ -86,6 +87,26 @@ jobs:
               & $env:CRP_EXECUTABLE publish $phase --help
               if ($LASTEXITCODE -ne 0) { throw "Missing publish $phase." }
           }
+      - name: Package controller transfer canary
+        if: matrix.runner == 'ubuntu-24.04'
+        shell: pwsh
+        env:
+          CONTROLLER: ${{ steps.tool.outputs.executable }}
+        run: |
+          tar -cf "$env:RUNNER_TEMP/controller.tar" -C (Split-Path $env:CONTROLLER) (Split-Path $env:CONTROLLER -Leaf)
+          if ($LASTEXITCODE -ne 0) { throw 'Controller canary packaging failed.' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: matrix.runner == 'ubuntu-24.04'
+        id: controller
+        with:
+          name: crp-controller-canary-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/controller.tar
+          if-no-files-found: error
+      - uses: ./.github/actions/restore-controller
+        if: matrix.runner == 'ubuntu-24.04'
+        with:
+          artifact-id: ${{ steps.controller.outputs.artifact-id }}
+          version: ${{ steps.tool.outputs.version }}
       - name: Install the pinned external compatibility checker
         if: matrix.runner == 'ubuntu-24.04'
         uses: ./.github/actions/install-checker

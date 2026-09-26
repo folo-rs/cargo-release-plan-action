@@ -46,6 +46,13 @@ the separately authorized live consumer pilot before production adoption:
 identity exchange/revocation alone does not establish package-specific upload
 grants or final binary delivery.
 
+```powershell
+gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.1.0
+```
+
+Confirm that the resulting run's source SHA is the reviewed candidate commit;
+dispatching a branch does not make later changes to that branch part of the run.
+
 After human authorization, publish immutable `v<action_version>` from that exact
 tested commit, then advance the matching major reference to it. Publishing tags,
 creating a GitHub/Marketplace release and consumer production cutover are

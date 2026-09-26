@@ -134,6 +134,10 @@ checks versions and publication inputs, then invokes `check-compatibility` with
 the same immutable baseline and `--deny-findings`. Rust captures and verifies the
 actual source for that comparison. Fork pull requests use ordinary read-only
 execution, never `pull_request_target`.
+PRs fetch the configured release branch independently of their PR base; push,
+schedule and manual checks retain their tested invocation SHA as the baseline.
+Compatibility still executes after a readiness failure when tool, context and
+setup prerequisites succeeded. The readiness failure is not masked.
 
 `release.yml` captures source and the Rust-generated workspace concurrency group.
 Its calling job holds `queue: max` with cancellation disabled around the complete
@@ -166,6 +170,9 @@ inside separate download directories. The final reporter receives actual
 not treated as complete evidence; missing or unreadable intent remains explicit.
 Only reporter download steps may continue after errors so Rust can emit the
 incomplete report. No publishing phase uses `continue-on-error`.
+Receipts identify themselves in their contents; the reporter does not derive
+identity from directory names, including when a single downloaded artifact is
+extracted at the download root.
 
 The fixed optional consumer setup action runs before Cargo verification/build
 operations. It must not modify source. Windows standalone archive tooling is

@@ -73,6 +73,7 @@ jobs:
         env:
           INSTALL_METHOD: ${{ matrix.method }}
           ARCHIVE_ONLY: ${{ matrix.archive-only }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module ./scripts/Bootstrap.psm1
@@ -94,14 +95,26 @@ jobs:
           foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
               if (-not $help.Contains($flag)) { throw "Installed registry operation does not expose $flag." }
           }
-          foreach ($command in @('release-context', 'check-compatibility', 'check-published', 'check-publishing-identity')) {
-              & $executable $command --help
-              if ($LASTEXITCODE -ne 0) { throw "Installed tool does not expose $command." }
-          }
-          foreach ($phase in @('github', 'binaries', 'report')) {
-              & $executable publish $phase --help
-              if ($LASTEXITCODE -ne 0) { throw "Installed tool does not expose publish $phase." }
+          $operations = @(
+              @{ args = @('release-context'); flags = @('--manifest-path', '--config', '--base') },
+              @{ args = @('check-compatibility'); flags = @('--output', '--manifest-path', '--prepared', '--plan', '--base', '--deny-findings') },
+              @{ args = @('check-published'); flags = @('--manifest-path', '--plan') },
+              @{ args = @('check-publishing-identity'); flags = @('--verbose') },
+              @{ args = @('publish', 'github'); flags = @('--publication', '--manifest-path', '--output', '--batches', '--dry-run') },
+              @{ args = @('publish', 'binaries'); flags = @('--publication', '--manifest-path', '--batch', '--output', '--artifacts', '--no-upload') },
+              @{ args = @('publish', 'report'); flags = @('--publication', '--repository', '--outcomes', '--jobs', '--output', '--no-issue') }
+          )
+          foreach ($operation in $operations) {
+              $arguments = $operation.args + @('--help')
+              $help = & $executable @arguments | Out-String
+              if ($LASTEXITCODE -ne 0) { throw "Installed operation is unavailable: $($operation.args -join ' ')." }
+              foreach ($flag in $operation.flags) {
+                  if (-not $help.Contains($flag)) { throw "Installed operation lacks $flag." }
+              }
           }
           if ($env:INSTALL_METHOD -eq 'install') {
-              Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
+              $checker = Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
+              $env:PATH = (Split-Path $checker) + [IO.Path]::PathSeparator + $env:PATH
+              & ./tests/Invoke-OfflineCanary.ps1 -Executable $executable
           }
+          & ./tests/Invoke-BinaryCanary.ps1 -Executable $executable

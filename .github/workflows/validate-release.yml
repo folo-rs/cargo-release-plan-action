@@ -48,4 +48,4 @@ jobs:
         run: |
           $results = $env:RESULTS | ConvertFrom-Json -AsHashtable
           if (@($results.Values | Where-Object result -NE 'success').Count) { throw 'Candidate acceptance did not pass.' }
-          'Candidate validation passed. Live-pilot acceptance and human release authorization remain separate; no tags or release were published.' >> $env:GITHUB_STEP_SUMMARY
+          "Candidate $env:GITHUB_SHA validation passed. Live-pilot acceptance and human release authorization remain separate; no tags or release were published." >> $env:GITHUB_STEP_SUMMARY

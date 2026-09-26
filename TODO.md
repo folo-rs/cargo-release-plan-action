@@ -1,13 +1,13 @@
 # Release acceptance
 
-- Agree the unified application's exact published version, CLI flags and artifact
-  protocol with the owning `folo-rs/folo` change before committing production pins
-  or enabling publisher orchestration.
-- Pass clean published-source and native-archive installation gates independently
-  from the [verified source and workflow identity checks](docs/validation.md).
-- Extend the published gate to the finalized full-check/publication CLI and exact
-  external compatibility-checker installation. The bootstrap gate checks only the
-  currently exposed offline check, preparation and registry flags.
+- Publish the selected CRP package and native archives through the existing
+  tool-owner publisher under separate authorization, then rerun clean published
+  source/archive/checker installation acceptance independently of source checks.
+- Enforce the required checks on `main`; the current fresh repository has no
+  merge protection. Exact names and permissions are in [maintainer setup](docs/setup.md).
 - Complete the authorized immutable-candidate live acceptance pilot before action
   release or production cutover. Do not publish action tags, configure Trusted
   Publishers or enable consumer publishing as part of read-only validation.
+
+The [evidence record](docs/validation.md) distinguishes completed read-only and
+identity proofs from package upload and complete live delivery.

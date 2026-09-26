@@ -24,15 +24,18 @@ function Get-InstallationSettings {
         [Parameter(Mandatory)][string] $RunnerArch
     )
 
-    $nativeTargets = @{
-        'Linux-X64' = 'x86_64-unknown-linux-gnu'
-        'Linux-ARM64' = 'aarch64-unknown-linux-gnu'
-        'Windows-X64' = 'x86_64-pc-windows-msvc'
-        'Windows-ARM64' = 'aarch64-pc-windows-msvc'
-        'macOS-ARM64' = 'aarch64-apple-darwin'
+    $manifestPath = Join-Path $ActionPath 'release.json'
+    if (-not (Test-Path $manifestPath -PathType Leaf)) {
+        throw 'Action installation is blocked: release.json must select the tested tool versions and native platforms.'
     }
-    $target = $nativeTargets["$RunnerOS-$RunnerArch"]
-    if (-not $target) { throw "Unsupported native platform: $RunnerOS-$RunnerArch." }
+    $release = Get-Content $manifestPath -Raw | ConvertFrom-Json
+    if ($release.schema_version -ne 1) { throw 'Unsupported action release manifest schema.' }
+    foreach ($version in @($release.action_version, $release.install_toolchain, $release.cargo_binstall_version, $release.tools.'cargo-release-plan'.version)) {
+        if ($version -cnotmatch '^\d+\.\d+\.\d+$') { throw 'Action release manifest requires exact stable versions.' }
+    }
+    $platform = @($release.platforms | Where-Object { $_.os -eq $RunnerOS -and $_.arch -eq $RunnerArch })
+    if ($platform.Count -ne 1) { throw "Unsupported native platform: $RunnerOS-$RunnerArch." }
+    $target = $platform[0].target
 
     if ($Method -eq 'path') {
         $packagePath = Join-Path (Resolve-Path -LiteralPath $SourcePath).Path 'packages/cargo-release-plan'
@@ -42,9 +45,7 @@ function Get-InstallationSettings {
         return @{
             Method = $Method
             Root = Join-Path $TemporaryDirectory 'cargo-release-plan-source'
-            # The source canary compiler is independent of consumer rustup overrides.
-            # Final released installations select their compiler from release.json.
-            Toolchain = '1.98.1'
+            Toolchain = $release.install_toolchain
             PackagePath = $packagePath
             Target = $target
             Version = $null
@@ -52,15 +53,6 @@ function Get-InstallationSettings {
         }
     }
 
-    $manifestPath = Join-Path $ActionPath 'release.json'
-    if (-not (Test-Path $manifestPath -PathType Leaf)) {
-        throw 'Released installation is blocked: release.json must select the finalized, published tool versions.'
-    }
-    $release = Get-Content $manifestPath -Raw | ConvertFrom-Json
-    if ($release.schema_version -ne 1) { throw 'Unsupported action release manifest schema.' }
-    foreach ($version in @($release.action_version, $release.install_toolchain, $release.cargo_binstall_version, $release.tools.'cargo-release-plan'.version)) {
-        if ($version -cnotmatch '^\d+\.\d+\.\d+$') { throw 'Action release manifest requires exact stable versions.' }
-    }
     $digest = (Get-FileHash $manifestPath -Algorithm SHA256).Hash.ToLowerInvariant()
     return @{
         Method = $Method
