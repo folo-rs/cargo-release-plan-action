@@ -175,4 +175,46 @@ function Install-ReleasePlan {
     return $executable
 }
 
-Export-ModuleMember -Function Get-InstallationSettings, Install-ReleasePlan, Install-CompatibilityChecker, Invoke-BootstrapCommand
+function Install-StandaloneSevenZip {
+    param(
+        [Parameter(Mandatory)][pscustomobject] $Pin,
+        [Parameter(Mandatory)][string] $Destination,
+        [System.Runtime.InteropServices.Architecture] $Architecture =
+            [System.Runtime.InteropServices.RuntimeInformation]::ProcessArchitecture
+    )
+
+    $entry = $Pin.payloads.PSObject.Properties[$Architecture.ToString()]
+    if ($null -eq $entry) { throw "Standalone 7-Zip does not support process architecture '$Architecture'." }
+    $payload = $entry.Value
+    $executable = Join-Path $Destination '7za.exe'
+    if (-not (Test-Path -LiteralPath $executable -PathType Leaf)) {
+        $work = Join-Path $env:RUNNER_TEMP "release-7zip-$([guid]::NewGuid().ToString('N'))"
+        New-Item -ItemType Directory -Path $work | Out-Null
+        try {
+            $archive = Join-Path $work $Pin.asset
+            Invoke-WebRequest -Uri "https://github.com/ip7z/7zip/releases/download/$($Pin.version)/$($Pin.asset)" -OutFile $archive
+            if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -cne $Pin.sha256) {
+                throw 'Standalone 7-Zip archive checksum differs from the pinned official asset.'
+            }
+            # Windows libarchive reads 7z; Git's tar can misread a drive letter as a remote host.
+            $tar = Join-Path $env:SystemRoot 'System32/tar.exe'
+            Invoke-BootstrapCommand $tar @('-xf', $archive, '-C', $work) | Out-Host
+            New-Item -ItemType Directory -Path $Destination -Force | Out-Null
+            Copy-Item -LiteralPath (Join-Path $work $payload.path) -Destination $executable
+            Copy-Item -LiteralPath (Join-Path $work 'License.txt') -Destination (Join-Path $Destination '7zip-license.txt')
+        }
+        finally {
+            Remove-Item -LiteralPath $work -Recurse -Force
+        }
+    }
+    # Existing and newly installed bytes must match the selected native payload before any probe.
+    if ((Get-FileHash -LiteralPath $executable -Algorithm SHA256).Hash.ToLowerInvariant() -cne $payload.sha256) {
+        throw "Standalone 7-Zip payload checksum differs from the pinned $Architecture executable. Remove the invalid managed file before reinstalling: $executable"
+    }
+    $identity = Invoke-BootstrapCommand $executable @('i') | Out-String
+    if ($identity -notmatch "7-Zip.* $([regex]::Escape($Pin.version)) ") {
+        throw 'Standalone archive tool identity differs from the selected 7-Zip version.'
+    }
+}
+
+Export-ModuleMember -Function Get-InstallationSettings, Install-ReleasePlan, Install-CompatibilityChecker, Install-StandaloneSevenZip, Invoke-BootstrapCommand

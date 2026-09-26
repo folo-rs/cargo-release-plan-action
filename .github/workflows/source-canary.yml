@@ -36,7 +36,7 @@ jobs:
         with:
           repository: folo-rs/folo
           # This reviewed full-command checkpoint is not published-installation evidence.
-          ref: 6af125672846e69dab59e38cc0a18a30b3b25e5a
+          ref: e1234945b9e1aaa28d006855e6733b706c13e2b7
           path: .source
           persist-credentials: false
       - uses: ./

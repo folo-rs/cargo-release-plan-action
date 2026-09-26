@@ -195,7 +195,9 @@ source fallback; archive acceptance separately forbids it. The manifest under
 `tests/fixtures` is only a unit-test fixture and never a production fallback.
 Source builds and source fallback need a native C/C++ toolchain and CMake.
 Native staging uses `zip`/`unzip` on Unix; Windows installs the pinned standalone
-`7za.exe` and retains its license, including x64 emulation on Windows ARM64.
+`7za.exe` for the actual PowerShell process architecture (x64 or ARM64) and retains
+its license. Existing and freshly installed executables must match the pinned
+payload checksum before even a version probe runs.
 
 ## Release acceptance
 
