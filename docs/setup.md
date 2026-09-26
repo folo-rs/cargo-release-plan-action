@@ -26,7 +26,7 @@ installation. No protection or ruleset changes are performed by this integration
 
 `release.json` is the action's independent release plan. Its `action_version`
 selects the action tag; `tools` selects the exact tested application and checker
-versions. The initial candidate is action 0.1.0 with CRP 0.5.0 and checker 0.50.0.
+versions. The initial candidate is action 0.1.0 with CRP 0.4.1 and checker 0.50.0.
 The compiler, binstall and Windows archive installer are also pinned.
 
 The native target/runner table declares the archive promises tested by

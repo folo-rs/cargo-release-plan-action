@@ -4,7 +4,7 @@ Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
 **Release candidate, not a published action release.** `release.json` selects
-action 0.1.0, `cargo-release-plan` 0.5.0 and `cargo-semver-checks` 0.50.0.
+action 0.1.0, `cargo-release-plan` 0.4.1 and `cargo-semver-checks` 0.50.0.
 Source checks do not establish that the exact crate and native archives are
 published, or authorize production cutover.
 See [release acceptance](TODO.md) for the remaining gates.
