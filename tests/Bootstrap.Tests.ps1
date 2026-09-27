@@ -40,6 +40,16 @@ Describe 'Installation selection' {
         $updated.Root | Should -Not -Be $original.Root
     }
 
+    It 'selects the released controller without archive-tool metadata' {
+        $script:Parameters.ActionPath = (Resolve-Path "$PSScriptRoot/..").Path
+        $release = Get-Content (Join-Path $script:Parameters.ActionPath 'release.json') -Raw | ConvertFrom-Json -AsHashtable
+        $release.ContainsKey('archive_tools') | Should -BeFalse
+        $settings = Get-InstallationSettings @script:Parameters
+        $settings.Version | Should -Be $release.tools.'cargo-release-plan'.version
+        $settings.BinstallVersion | Should -Be $release.cargo_binstall_version
+        $settings.Target | Should -Be 'x86_64-unknown-linux-gnu'
+    }
+
     It 'rejects an unavailable release manifest rather than using test pins' {
         Remove-Item (Join-Path $script:Parameters.ActionPath 'release.json')
         { Get-InstallationSettings @script:Parameters } | Should -Throw '*Action installation is blocked*'

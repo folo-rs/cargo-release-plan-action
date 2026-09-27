@@ -264,7 +264,6 @@ jobs:
           CRP_NO_UPLOAD: 'false'
           CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-build
         run: |
-          & ./.release-plan-action/scripts/Install-ArchiveTools.ps1
           & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && steps.batch.outputs.path != ''

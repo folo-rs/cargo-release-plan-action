@@ -3,7 +3,6 @@ param([Parameter(Mandatory)][string] $Executable)
 
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
-& "$PSScriptRoot/../scripts/Install-ArchiveTools.ps1"
 $work = Join-Path $env:RUNNER_TEMP "release-native-canary-$([guid]::NewGuid().ToString('N'))"
 $source = Join-Path $work 'source'
 $artifacts = Join-Path $work 'artifacts'

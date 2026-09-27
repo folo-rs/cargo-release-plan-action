@@ -176,14 +176,12 @@ identity from directory names, including when a single downloaded artifact is
 extracted at the download root.
 
 The fixed optional consumer setup action runs before Cargo verification/build
-operations. It must not modify source. Windows standalone archive tooling is
-obtained from a pinned official checksum, using the same minimal installation
-contract as Folo's archive bootstrap and preserving the upstream license.
-The bootstrap selects x64 or ARM64 from the current process architecture, not a
-runner label or OS architecture. `release.json` pins the official archive digest
-and each extracted payload digest. The shared installation helper checks the
-managed executable's bytes on both reuse and fresh installation before executing
-its version probe. A payload mismatch fails explicitly without executing that file.
+operations. It must not modify source. CRP owns in-process ZIP creation for native
+release archives; the action supplies no external ZIP-tool bootstrap. The native
+canary checks the staged ZIP/checksum pair without an external archiver.
+Controller transfer still uses tar artifacts to preserve executable permissions;
+that transport and binstall's distribution extraction are independent of release
+ZIP creation.
 
 The pinned actionlint predates GitHub's supported `concurrency.queue` property.
 Only its exact unsupported-key diagnostic is excluded. Unit tests assert

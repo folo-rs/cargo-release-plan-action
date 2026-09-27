@@ -7,6 +7,9 @@ BeforeAll {
     foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_DENY_FINDINGS', 'CRP_BATCHES', 'CRP_BATCH', 'CRP_ARTIFACTS', 'CRP_NO_UPLOAD', 'CRP_OUTCOMES', 'CRP_JOBS', 'CRP_REPOSITORY', 'CRP_NO_ISSUE')) {
         $script:OriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
+    foreach ($name in @('CRP_ACTION_PATH', 'CRP_INSTALL_METHOD', 'CRP_SOURCE_PATH', 'GITHUB_OUTPUT', 'GITHUB_PATH', 'RUNNER_TEMP', 'RUNNER_OS', 'RUNNER_ARCH')) {
+        $script:OriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
+    }
 }
 
 AfterAll {
@@ -277,9 +280,38 @@ Describe 'Action command forwarding' {
         }
     }
 
+    It 'bootstraps binary publication with only the selected controller installer' {
+        $env:CRP_COMMAND = 'publish-binaries'
+        $env:CRP_ACTION_PATH = (Resolve-Path "$PSScriptRoot/..").Path
+        $env:CRP_INSTALL_METHOD = 'path'
+        $env:CRP_SOURCE_PATH = 'source'
+        $env:GITHUB_OUTPUT = Join-Path $TestDrive 'bootstrap-output.txt'
+        $env:GITHUB_PATH = Join-Path $TestDrive 'bootstrap-path.txt'
+        $env:RUNNER_TEMP = $TestDrive
+        $env:RUNNER_OS = 'Windows'
+        $env:RUNNER_ARCH = 'X64'
+        Mock Get-InstallationSettings { @{ Version = '0.4.1' } }
+        Mock Install-ReleasePlan { $env:CRP_EXECUTABLE }
+        Mock Install-CompatibilityChecker {}
+        Mock Invoke-WebRequest {}
+        $originalDirectory = (Get-Location).Path
+
+        & "$PSScriptRoot/../scripts/Bootstrap.ps1" -Stage install
+
+        (Get-Location).Path | Should -Be $originalDirectory
+        Should -Invoke Get-InstallationSettings -Times 1 -Exactly
+        Should -Invoke Install-ReleasePlan -Times 1 -Exactly
+        Should -Invoke Install-CompatibilityChecker -Times 0
+        Should -Invoke Invoke-BootstrapCommand -Times 0
+        Should -Invoke Invoke-WebRequest -Times 0
+        Get-Content $env:GITHUB_OUTPUT | Should -Contain "executable=$env:CRP_EXECUTABLE"
+        Get-Content $env:GITHUB_PATH | Should -Be (Split-Path $env:CRP_EXECUTABLE)
+    }
+
     It 'stages only the specified frozen binary batch when no-upload is true' {
         $env:CRP_COMMAND = 'publish-binaries'
         & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -Exactly
         Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
             ($Arguments -join '|') -eq "publish|binaries|--publication|$env:CRP_PUBLICATION|--batch|$env:CRP_BATCH|--manifest-path|Cargo.toml|--output|$env:CRP_OUTPUT|--artifacts|$env:CRP_ARTIFACTS|--no-upload"
         }

@@ -26,9 +26,6 @@ else {
             $checker = Install-CompatibilityChecker -ActionPath $env:CRP_ACTION_PATH -Settings $settings
             (Split-Path $checker) >> $env:GITHUB_PATH
         }
-        if ($env:CRP_COMMAND -eq 'publish-binaries') {
-            & "$PSScriptRoot/Install-ArchiveTools.ps1"
-        }
     }
     finally {
         Pop-Location
