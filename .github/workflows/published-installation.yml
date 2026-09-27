@@ -12,32 +12,18 @@ permissions:
 jobs:
   acceptance:
     name: Published installation
-    needs: [manifest, install]
+    needs: install
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - shell: pwsh
         env:
-          MANIFEST: ${{ needs.manifest.result }}
           INSTALL: ${{ needs.install.result }}
         run: |
-          if ($env:MANIFEST -ne 'success' -or $env:INSTALL -ne 'success') {
+          if ($env:INSTALL -ne 'success') {
               throw 'Exact published package, native archive and external-checker installation are required.'
           }
-  manifest:
-    runs-on: ubuntu-24.04
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - name: Require finalized release pins
-        shell: pwsh
-        run: |
-          if (-not (Test-Path release.json -PathType Leaf)) {
-              throw 'Release acceptance is blocked: finalized, published tool pins are required in release.json. Source checks cannot satisfy this gate.'
-          }
   install:
-    needs: manifest
     strategy:
       fail-fast: false
       matrix:

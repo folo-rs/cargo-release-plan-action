@@ -14,6 +14,43 @@ function Invoke-BootstrapCommand {
     }
 }
 
+function Assert-CommandInputs {
+    param(
+        [Parameter(Mandatory)][string] $Command,
+        [hashtable] $Inputs = @{}
+    )
+
+    $allowed = @{
+        version = @()
+        'check-publishing-identity' = @()
+        'version-readiness' = @('base')
+        check = @('base', 'config')
+        'release-context' = @('base', 'config')
+        'check-compatibility' = @('base', 'prepared', 'plan', 'output', 'deny-findings')
+        'check-published' = @('plan')
+        'prepare-publish' = @('config', 'source', 'output')
+        'publish-registry' = @('publication', 'output', 'dry-run')
+        'publish-github' = @('publication', 'output', 'batches', 'dry-run')
+        'publish-binaries' = @('publication', 'batch', 'output', 'artifacts', 'no-upload')
+        'publish-report' = @('repository', 'publication', 'outcomes', 'jobs', 'output', 'no-issue')
+    }
+    if (-not $allowed.ContainsKey($Command)) { throw "Unsupported action command '$Command'." }
+
+    # GitHub supplies all composite defaults, including those irrelevant to the selected command.
+    $defaults = @{
+        config = '.cargo/release_plan.toml'
+        base = ''; source = ''; publication = ''; output = ''; prepared = ''; plan = ''
+        batches = ''; batch = ''; artifacts = ''; outcomes = ''; jobs = ''; repository = ''
+        'deny-findings' = 'false'; 'dry-run' = 'false'; 'no-upload' = 'false'; 'no-issue' = 'false'
+    }
+    foreach ($inputName in $defaults.Keys) {
+        $value = [string]$Inputs[$inputName]
+        if ($value -ne '' -and $value -cne $defaults[$inputName] -and $inputName -notin $allowed[$Command]) {
+            throw "Input '$inputName' is not supported for command '$Command'."
+        }
+    }
+}
+
 function Get-InstallationSettings {
     param(
         [Parameter(Mandatory)][string] $ActionPath,
@@ -175,4 +212,4 @@ function Install-ReleasePlan {
     return $executable
 }
 
-Export-ModuleMember -Function Get-InstallationSettings, Install-ReleasePlan, Install-CompatibilityChecker, Invoke-BootstrapCommand
+Export-ModuleMember -Function Assert-CommandInputs, Get-InstallationSettings, Install-ReleasePlan, Install-CompatibilityChecker, Invoke-BootstrapCommand

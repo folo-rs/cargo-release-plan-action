@@ -4,9 +4,12 @@ param([Parameter(Mandatory)][ValidateSet('prepare', 'install')][string] $Stage)
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot/Bootstrap.psm1" -Force
 
-if ($env:CRP_COMMAND -notin @('version', 'version-readiness', 'check', 'release-context', 'check-compatibility', 'check-published', 'prepare-publish', 'publish-registry', 'publish-github', 'publish-binaries', 'publish-report', 'check-publishing-identity')) {
-    throw "Unsupported action command '$env:CRP_COMMAND'."
+$commandInputs = @{}
+if ($Stage -eq 'prepare') {
+    if (-not $env:CRP_INPUTS_JSON) { throw 'The prepare stage requires the composite action inputs.' }
+    $commandInputs = $env:CRP_INPUTS_JSON | ConvertFrom-Json -AsHashtable
 }
+Assert-CommandInputs -Command $env:CRP_COMMAND -Inputs $commandInputs
 $sourcePath = if ([IO.Path]::IsPathRooted($env:CRP_SOURCE_PATH)) {
     $env:CRP_SOURCE_PATH
 }

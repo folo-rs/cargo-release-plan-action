@@ -129,3 +129,43 @@ Describe 'Release graph invariants' {
         }
     }
 }
+
+Describe 'Published installation acceptance' {
+    BeforeAll {
+        $script:OriginalInstallResult = $env:INSTALL
+        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/published-installation.yml" -Raw
+        $script:PublishedJobs = [regex]::Match($workflow, '(?ms)^jobs:\r?\n(.*)$').Groups[1].Value
+        $script:PublishedAcceptance = [regex]::Match($script:PublishedJobs, '(?ms)^  acceptance:\r?\n(.*?)(?=^  install:)').Groups[1].Value
+        $run = [regex]::Match($script:PublishedAcceptance, '(?s)        run: \|\r?\n(.*)$').Groups[1].Value
+        if (-not $run) { throw 'Published installation acceptance command is missing.' }
+        $script:PublishedVerdict = [scriptblock]::Create($run)
+    }
+
+    AfterAll {
+        $env:INSTALL = $script:OriginalInstallResult
+    }
+
+    It 'keeps the named required gate dependent on the complete install matrix' {
+        $jobs = @([regex]::Matches($script:PublishedJobs, '(?m)^  ([a-z-]+):\r?$') | ForEach-Object { $_.Groups[1].Value })
+        $jobs | Should -Be @('acceptance', 'install')
+        $script:PublishedAcceptance | Should -Match '(?m)^    name: Published installation\r?$'
+        $script:PublishedAcceptance | Should -Match '(?m)^    needs: install\r?$'
+        $script:PublishedAcceptance | Should -Match '(?m)^    if: always\(\)\r?$'
+        $script:PublishedAcceptance | Should -Match ([regex]::Escape('INSTALL: ${{ needs.install.result }}'))
+    }
+
+    It 'accepts a successful matrix result' {
+        $env:INSTALL = 'success'
+        { & $script:PublishedVerdict } | Should -Not -Throw
+    }
+
+    It 'rejects a matrix result of <Result>' -ForEach @(
+        @{ Result = 'failure' }
+        @{ Result = 'cancelled' }
+        @{ Result = 'skipped' }
+        @{ Result = '' }
+    ) {
+        $env:INSTALL = $Result
+        { & $script:PublishedVerdict } | Should -Throw '*installation are required*'
+    }
+}

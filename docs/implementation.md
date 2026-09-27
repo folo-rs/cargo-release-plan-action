@@ -6,6 +6,15 @@ GitHub-owned orchestration lives in YAML and a small PowerShell bootstrap.
 Release-policy parsing, reconciliation and rendered reports belong in the
 `cargo-release-plan` executable rather than in a second shell implementation.
 
+The composite passes its complete input object to the bootstrap's preparation
+stage. One command-to-input table rejects nondefault command-specific values
+before installation settings, cache access or execution. Empty values and normal
+composite defaults are not evidence that an unrelated operation was requested.
+Shared installation inputs remain common to every root command. The invocation
+adapter retains the selected operation's existing required-value checks; internal
+workflow steps supply their invocation environment directly rather than inferring
+action inputs from ambient `CRP_*` variables.
+
 ## Exact reusable-workflow source
 
 `action-source.yml` is a private reusable workflow called using a relative

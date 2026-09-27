@@ -144,6 +144,15 @@ It checks the executable's exact `--version` and adds its installation directory
 to `PATH`. `version-readiness` requires a full immutable `base` SHA and does not
 run the full pull-request gate.
 
+Command-specific inputs must apply to the selected command. Nondefault values for
+unrelated inputs are rejected before tool installation or execution; normal empty
+inputs, false flags and the default `config` value may remain present. For example,
+`version` does not accept an `output` destination or `dry-run: 'true'`.
+Required inputs and flag values are still validated by their selected operation.
+`install-method`, `source-path` and `working-directory` remain shared installation
+inputs; `source-path` is used only in path mode, and workspace-free commands do
+not acquire a workspace merely because an installation directory was supplied.
+
 `check` also forwards `config`, defaulting to `.cargo/release_plan.toml` relative
 to `working-directory`. Rust validates publication inputs without remote writes.
 An absent or invalid configuration fails the operation; the action neither parses

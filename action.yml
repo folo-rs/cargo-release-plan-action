@@ -8,7 +8,7 @@ inputs:
     description: Cargo workspace directory relative to the caller checkout.
     default: .
   config:
-    description: Workspace-relative configuration for check and prepare-publish; not used by version-readiness.
+    description: Workspace-relative configuration for check, release-context and prepare-publish.
     default: .cargo/release_plan.toml
   install-method:
     description: binstall, install, or path. Released methods require release.json.
@@ -17,13 +17,13 @@ inputs:
     description: Folo source checkout used only by path installation.
     default: .
   base:
-    description: Explicit immutable release baseline for version-readiness or check.
+    description: Release baseline for version-readiness, check, release-context or check-compatibility.
     default: ''
   source:
     description: Full immutable release source SHA for prepare-publish.
     default: ''
   publication:
-    description: Immutable publication manifest consumed by publish-registry, relative to working-directory or absolute.
+    description: Immutable publication manifest for publish-registry, publish-github, publish-binaries or publish-report.
     default: ''
   output:
     description: New output file or directory for the selected command. Keep outside source or ignored.
@@ -83,6 +83,7 @@ runs:
         CRP_SOURCE_PATH: ${{ inputs.source-path }}
         CRP_COMMAND: ${{ inputs.command }}
         CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
+        CRP_INPUTS_JSON: ${{ toJSON(inputs) }}
       run: |
         & "$env:CRP_ACTION_PATH/scripts/Bootstrap.ps1" -Stage prepare
     - uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
