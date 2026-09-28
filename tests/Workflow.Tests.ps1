@@ -88,7 +88,11 @@ Describe 'Release graph invariants' {
         $workflow | Should -Match 'CRP_DENY_FINDINGS: ''true'''
         $workflow | Should -Match 'steps.checker.outcome == ''success'''
         $workflow | Should -Not -Match 'steps.readiness.outcome == ''success'''
-        $workflow | Should -Match ([regex]::Escape('contains(fromJSON(''["push","schedule","workflow_dispatch"]''), github.event_name) && github.sha'))
+        $workflow | Should -Match ([regex]::Escape('CRP_RELEASE_HISTORY: ${{ inputs.release-history }}'))
+        $workflow | Should -Match 'Get-CheckMergeTarget -EventName \$env:GITHUB_EVENT_NAME'
+        ([regex]::Matches($workflow, [regex]::Escape('CRP_RELEASE_HISTORY: ${{ steps.context.outputs.release-history }}'))).Count | Should -Be 2
+        ([regex]::Matches($workflow, [regex]::Escape('CRP_MERGE_TARGET: ${{ steps.context.outputs.merge-target }}'))).Count | Should -Be 2
+        $workflow | Should -Not -Match 'CRP_BASE:|github.sha'
     }
 
     It 'preserves failed reconciliation while allowing registry-gated independent batches' {
@@ -127,6 +131,82 @@ Describe 'Release graph invariants' {
             $workflow | Should -Match 'ref: \$\{\{ github.sha \}\}\r?\n\s+path: invocation'
             $workflow | Should -Match 'source-path: invocation/\$\{\{ inputs.source-path \}\}'
         }
+    }
+}
+
+Describe 'Release history and target routing' {
+    BeforeEach {
+        $script:Context = @{
+            schema_version = 2
+            repository = 'example/consumer'
+            release_branch = 'main'
+            release_history = 'a' * 40
+            merge_target = $null
+            head = 'c' * 40
+            workspace_manifest = 'Cargo.toml'
+            config_path = '.cargo/release_plan.toml'
+            concurrency_group = 'cargo-release-plan-' + ('d' * 64)
+        }
+    }
+
+    It 'preserves the core-normalized history/target pair including an absent target' -ForEach @(
+        @{ Target = $null }
+        @{ Target = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb' }
+    ) {
+        $script:Context.merge_target = $Target
+        $context = Get-ContextRouting -Json ($script:Context | ConvertTo-Json) -Repository 'example/consumer'
+        $context.release_history | Should -Be ('a' * 40)
+        $context.merge_target | Should -Be $Target
+        $context.head | Should -Be ('c' * 40)
+    }
+
+    It 'rejects incompatible context rather than interpreting legacy history' -ForEach @(
+        @{ Invalid = 'schema' }
+        @{ Invalid = 'history' }
+        @{ Invalid = 'target' }
+        @{ Invalid = 'missing-target' }
+        @{ Invalid = 'repository' }
+    ) {
+        switch ($Invalid) {
+            schema { $script:Context.schema_version = 1 }
+            history { $script:Context.release_history = 'main' }
+            target { $script:Context.merge_target = 'parent-branch' }
+            missing-target { $script:Context.Remove('merge_target') }
+            repository { $script:Context.repository = 'other/consumer' }
+        }
+        { Get-ContextRouting -Json ($script:Context | ConvertTo-Json) -Repository 'example/consumer' } |
+            Should -Throw
+    }
+
+    It 'selects the PR base snapshot as target regardless of main or stacked branch name' -ForEach @(
+        @{ Ref = 'main' }
+        @{ Ref = 'feature/parent' }
+    ) {
+        $event = @{ pull_request = @{ base = @{ sha = 'b' * 40; ref = $Ref }; head = @{ sha = 'c' * 40 } } }
+        Get-CheckMergeTarget -EventName pull_request -EventJson ($event | ConvertTo-Json -Depth 4) |
+            Should -Be ('b' * 40)
+    }
+
+    It 'uses only the tested queue target without interpreting queued PR boundaries' {
+        $event = @{ merge_group = @{ base_sha = 'b' * 40; head_sha = 'c' * 40; base_ref = 'refs/heads/main' } }
+        Get-CheckMergeTarget -EventName merge_group -EventJson ($event | ConvertTo-Json) |
+            Should -Be ('b' * 40)
+    }
+
+    It 'does not infer history or target from <Event> event data' -ForEach @(
+        @{ Event = 'push' }
+        @{ Event = 'schedule' }
+        @{ Event = 'workflow_dispatch' }
+    ) {
+        $event = @{ after = 'c' * 40; ref = 'refs/heads/feature'; inputs = @{ base = 'b' * 40 } }
+        Get-CheckMergeTarget -EventName $Event -EventJson ($event | ConvertTo-Json) | Should -Be ''
+    }
+
+    It 'rejects missing or mutable tested event targets' -ForEach @(
+        @{ Event = 'pull_request'; Json = '{"pull_request":{"base":{"sha":"main"}}}' }
+        @{ Event = 'merge_group'; Json = '{"merge_group":{"head_sha":"cccccccccccccccccccccccccccccccccccccccc"}}' }
+    ) {
+        { Get-CheckMergeTarget -EventName $Event -EventJson $Json } | Should -Throw
     }
 }
 

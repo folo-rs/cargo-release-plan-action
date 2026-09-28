@@ -6,13 +6,25 @@ function Get-ContextRouting {
     param([Parameter(Mandatory)][string] $Json, [Parameter(Mandatory)][string] $Repository)
 
     $context = $Json | ConvertFrom-Json
-    if ($context.schema_version -ne 1 -or $context.repository -ine $Repository -or
+    if ($context.schema_version -ne 2 -or $context.repository -ine $Repository -or
         $context.head -cnotmatch '^[0-9a-f]{40}$' -or
-        $context.release_base -cnotmatch '^[0-9a-f]{40}$' -or
+        $context.release_history -cnotmatch '^[0-9a-f]{40}$' -or
+        ($null -ne $context.merge_target -and $context.merge_target -cnotmatch '^[0-9a-f]{40}$') -or
         $context.concurrency_group -cnotmatch '^cargo-release-plan-[0-9a-f]{64}$') {
         throw 'Release context does not identify this caller repository and immutable inputs.'
     }
     return $context
+}
+
+function Get-CheckMergeTarget {
+    param([Parameter(Mandatory)][string] $EventName, [string] $EventJson)
+
+    if ($EventName -notin @('pull_request', 'merge_group')) { return '' }
+    $event = $EventJson | ConvertFrom-Json
+    # The event supplies a tested target, not evidence that its commits have been released.
+    $target = if ($EventName -eq 'pull_request') { $event.pull_request.base.sha } else { $event.merge_group.base_sha }
+    if ($target -cnotmatch '^[0-9a-f]{40}$') { throw "Event $EventName does not identify an immutable merge target." }
+    return $target
 }
 
 function Get-BatchRouting {
@@ -61,4 +73,4 @@ function Write-JobResults {
     $jobs | ConvertTo-Json | Set-Content $Output
 }
 
-Export-ModuleMember -Function Get-ContextRouting, Get-BatchRouting, Write-JobResults
+Export-ModuleMember -Function Get-ContextRouting, Get-CheckMergeTarget, Get-BatchRouting, Write-JobResults

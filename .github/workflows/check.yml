@@ -15,6 +15,10 @@ on:
       source-path:
         type: string
         default: .
+      release-history:
+        description: Optional known immutable release-history commit; otherwise fetch the configured release branch.
+        type: string
+        default: ''
 
 permissions:
   contents: read
@@ -57,13 +61,15 @@ jobs:
           CRP_COMMAND: release-context
           CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
           CRP_CONFIG: ${{ inputs.config }}
-          CRP_BASE: ${{ contains(fromJSON('["push","schedule","workflow_dispatch"]'), github.event_name) && github.sha || '' }}
+          CRP_RELEASE_HISTORY: ${{ inputs.release-history }}
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module ./.release-plan-action/scripts/Workflow.psm1
+          $env:CRP_MERGE_TARGET = Get-CheckMergeTarget -EventName $env:GITHUB_EVENT_NAME -EventJson (Get-Content $env:GITHUB_EVENT_PATH -Raw)
           $json = & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1 | Out-String
           $context = Get-ContextRouting -Json $json -Repository $env:GITHUB_REPOSITORY
-          "base=$($context.release_base)" >> $env:GITHUB_OUTPUT
+          "release-history=$($context.release_history)" >> $env:GITHUB_OUTPUT
+          "merge-target=$($context.merge_target)" >> $env:GITHUB_OUTPUT
           "scope=$($context.concurrency_group)" >> $env:GITHUB_OUTPUT
       - name: Validate versions and publication configuration
         id: readiness
@@ -73,7 +79,8 @@ jobs:
           CRP_COMMAND: check
           CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
           CRP_CONFIG: ${{ inputs.config }}
-          CRP_BASE: ${{ steps.context.outputs.base }}
+          CRP_RELEASE_HISTORY: ${{ steps.context.outputs.release-history }}
+          CRP_MERGE_TARGET: ${{ steps.context.outputs.merge-target }}
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
       - name: Install exact external checker
         id: checker
@@ -89,7 +96,8 @@ jobs:
           CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
           CRP_COMMAND: check-compatibility
           CRP_WORKING_DIRECTORY: consumer/${{ inputs.working-directory }}
-          CRP_BASE: ${{ steps.context.outputs.base }}
+          CRP_RELEASE_HISTORY: ${{ steps.context.outputs.release-history }}
+          CRP_MERGE_TARGET: ${{ steps.context.outputs.merge-target }}
           CRP_DENY_FINDINGS: 'true'
           CRP_OUTPUT: ${{ runner.temp }}/compatibility
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1

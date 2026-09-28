@@ -34,6 +34,20 @@ Fork pull requests use the tested source and base-repository release history,
 without `pull_request_target` or publishing credentials. A separately exposed
 version-readiness operation supports intentionally narrower merge-queue checks.
 
+Release history is actual configured release-branch history, not the PR base or
+a synthetic queue head. A merge target is the tested destination snapshot for a
+PR or queue candidate. CRP interprets a not-yet-merged target as one final
+snapshot/version release unit while retaining actual-history package anchors
+for catch-up assessment. The action supplies these identities separately.
+Readiness and compatibility share one context-resolved pair; ancestry
+normalization, stale-target diagnostics and version decisions remain in Rust.
+
+PR and merge-group targets come directly from their event payloads. Other check
+events do not infer a merge target or treat candidate HEAD as release history.
+Callers may explicitly select a known release-history commit. Merge-queue
+readiness supplements individual PR checks rather than redefining their release
+decisions according to queue batching.
+
 Publication preserves an immutable source manifest and separate attempt outcomes.
 Registry completion is a prerequisite to any GitHub writes. GitHub reconciliation
 emits immutable native batches bound to actual package-tag commits. A tag failure

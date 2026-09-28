@@ -4,7 +4,7 @@ Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
 **Release candidate, not a published action release.** `release.json` selects
-action 0.1.0, `cargo-release-plan` 0.4.1 and `cargo-semver-checks` 0.50.0.
+action 0.1.0, `cargo-release-plan` 0.5.0 and `cargo-semver-checks` 0.50.0.
 Source checks do not establish that the exact crate and native archives are
 published, or authorize production cutover.
 See [release acceptance](TODO.md) for the remaining gates.
@@ -65,8 +65,28 @@ jobs:
 The check workflow fetches the configured release branch, checks version and
 publication inputs, and enforces captured-source API comparisons with the pinned
 external checker. It supports fork pull requests without OIDC, writes or secrets.
+
+**Release history** is the actual release-branch history used to locate each
+package's anchor. A **merge target** is the snapshot into which the tested source
+will merge; it is not evidence that its commits have already been released.
+For PR checks the target is the event's PR base SHA, including stacked PRs.
+CRP normalizes a target already in release history to no anticipated release;
+an unmerged descendant target contributes its final snapshot and version as one
+anticipated squash unit. Rust owns this interpretation, including stale-target
+diagnostics; the action does not reconstruct parent releases from Git commits.
+
+Push, manual and scheduled checks also fetch configured release history by
+default, without treating the tested candidate SHA as released. A caller that
+already owns a known pinned release-history commit can pass the shared workflow's
+optional `release-history` input. Both readiness and compatibility use the same
+context-resolved history and optional target.
+
 The lower `version-readiness` command remains available for deliberately narrower
-merge-queue checks using an explicit tested `base`.
+merge-queue checks. Resolve actual history through `release-context`, supplying
+the merge-group event's base SHA as `merge-target`, then pass both returned values
+to readiness. Do not promote a synthetic queue commit into release history.
+Aggregate queue readiness does not replace each PR's checks or derive release
+units from queue batch boundaries.
 
 ```yaml
 name: Release
@@ -141,8 +161,18 @@ The root composite exposes `version`, `version-readiness`, `check`,
 mode builds `packages/cargo-release-plan` from the selected Folo checkout using
 the pinned installation compiler, independently of a consumer toolchain override.
 It checks the executable's exact `--version` and adds its installation directory
-to `PATH`. `version-readiness` requires a full immutable `base` SHA and does not
-run the full pull-request gate.
+to `PATH`. `version-readiness` requires a full immutable `release-history` SHA,
+accepts an optional `merge-target`, and does not run the full pull-request gate.
+`base` remains a legacy alias for `release-history`; supply only one spelling.
+The same history/target inputs apply to `check`, `release-context` and fresh
+`check-compatibility` execution. Context acquires configured history when no
+explicit history is supplied. Captured prepared/plan evidence retains its own
+assessment inputs; Rust enforces the compatible input combinations.
+The action's `version` operation still returns the executable's short version
+line, not schema discovery JSON. Invoke `cargo-release-plan version` directly
+for its workspace-free JSON schema inventory. This candidate uses plan/report/
+prepared schema 5, decisions/compatibility schema 1 and release-context schema 2;
+the action continues to pin exact tested tool installations.
 
 Command-specific inputs must apply to the selected command. Nondefault values for
 unrelated inputs are rejected before tool installation or execution; normal empty

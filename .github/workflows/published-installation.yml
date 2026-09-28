@@ -68,7 +68,7 @@ jobs:
           $executable = Install-ReleasePlan -Settings $settings -ArchiveOnly:($env:ARCHIVE_ONLY -eq 'true')
           $help = & $executable check --help | Out-String
           if ($LASTEXITCODE -ne 0) { throw 'Installed tool check help failed.' }
-          foreach ($flag in @('--manifest-path', '--base', '--format', '--config')) {
+          foreach ($flag in @('--manifest-path', '--release-history', '--merge-target', '--format', '--config')) {
               if (-not $help.Contains($flag)) { throw "Installed tool does not expose $flag." }
           }
           $help = & $executable prepare-publish --help | Out-String
@@ -82,8 +82,8 @@ jobs:
               if (-not $help.Contains($flag)) { throw "Installed registry operation does not expose $flag." }
           }
           $operations = @(
-              @{ args = @('release-context'); flags = @('--manifest-path', '--config', '--base') },
-              @{ args = @('check-compatibility'); flags = @('--output', '--manifest-path', '--prepared', '--plan', '--base', '--deny-findings') },
+              @{ args = @('release-context'); flags = @('--manifest-path', '--config', '--release-history', '--merge-target') },
+              @{ args = @('check-compatibility'); flags = @('--output', '--manifest-path', '--prepared', '--plan', '--release-history', '--merge-target', '--deny-findings') },
               @{ args = @('check-published'); flags = @('--manifest-path', '--plan') },
               @{ args = @('check-publishing-identity'); flags = @('--verbose') },
               @{ args = @('publish', 'github'); flags = @('--publication', '--manifest-path', '--output', '--batches', '--dry-run') },

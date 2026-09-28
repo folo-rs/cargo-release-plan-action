@@ -2,6 +2,17 @@
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot/Bootstrap.psm1" -Force
 
+$releaseHistory = $null
+$assessmentArguments = @()
+if ($env:CRP_COMMAND -in @('version-readiness', 'check', 'release-context', 'check-compatibility')) {
+    if ($env:CRP_RELEASE_HISTORY -and $env:CRP_BASE) {
+        throw 'Inputs release-history and base are aliases; supply only one.'
+    }
+    $releaseHistory = if ($env:CRP_RELEASE_HISTORY) { $env:CRP_RELEASE_HISTORY } else { $env:CRP_BASE }
+    if ($releaseHistory) { $assessmentArguments += @('--release-history', $releaseHistory) }
+    if ($env:CRP_MERGE_TARGET) { $assessmentArguments += @('--merge-target', $env:CRP_MERGE_TARGET) }
+}
+
 switch ($env:CRP_COMMAND) {
     version {
         Invoke-BootstrapCommand $env:CRP_EXECUTABLE @('--version')
@@ -12,7 +23,7 @@ switch ($env:CRP_COMMAND) {
     release-context {
         if ([string]::IsNullOrWhiteSpace($env:CRP_CONFIG)) { throw 'release-context requires configuration.' }
         $arguments = @('release-context', '--manifest-path', 'Cargo.toml', '--config', $env:CRP_CONFIG)
-        if ($env:CRP_BASE) { $arguments += @('--base', $env:CRP_BASE) }
+        $arguments += $assessmentArguments
         Push-Location (Join-Path $env:GITHUB_WORKSPACE $env:CRP_WORKING_DIRECTORY)
         try { Invoke-BootstrapCommand $env:CRP_EXECUTABLE $arguments }
         finally { Pop-Location }
@@ -23,7 +34,7 @@ switch ($env:CRP_COMMAND) {
         $arguments = @('check-compatibility', '--manifest-path', 'Cargo.toml', '--output', $env:CRP_OUTPUT)
         if ($env:CRP_PREPARED) { $arguments += @('--prepared', $env:CRP_PREPARED) }
         if ($env:CRP_PLAN) { $arguments += @('--plan', $env:CRP_PLAN) }
-        if ($env:CRP_BASE) { $arguments += @('--base', $env:CRP_BASE) }
+        $arguments += $assessmentArguments
         if ($env:CRP_DENY_FINDINGS -ceq 'true') { $arguments += '--deny-findings' }
         Push-Location (Join-Path $env:GITHUB_WORKSPACE $env:CRP_WORKING_DIRECTORY)
         try { Invoke-BootstrapCommand $env:CRP_EXECUTABLE $arguments }
@@ -37,10 +48,10 @@ switch ($env:CRP_COMMAND) {
         finally { Pop-Location }
     }
     { $_ -in @('version-readiness', 'check') } {
-        if ($env:CRP_BASE -cnotmatch '^[0-9a-f]{40}$') {
-            throw "$env:CRP_COMMAND requires an explicit immutable base commit."
+        if ($releaseHistory -cnotmatch '^[0-9a-f]{40}$') {
+            throw "$env:CRP_COMMAND requires an explicit immutable release-history commit."
         }
-        $arguments = @('check', '--manifest-path', 'Cargo.toml', '--base', $env:CRP_BASE, '--format', 'github')
+        $arguments = @('check', '--manifest-path', 'Cargo.toml') + $assessmentArguments + @('--format', 'github')
         if ($env:CRP_COMMAND -eq 'check') {
             if ([string]::IsNullOrWhiteSpace($env:CRP_CONFIG)) {
                 throw 'check requires an explicit workspace-relative publication configuration.'

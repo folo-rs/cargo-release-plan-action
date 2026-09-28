@@ -4,7 +4,7 @@ BeforeAll {
     Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
     $script:InvokeAction = Join-Path $PSScriptRoot '../scripts/Invoke-ReleasePlan.ps1'
     $script:OriginalEnvironment = @{}
-    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_DENY_FINDINGS', 'CRP_BATCHES', 'CRP_BATCH', 'CRP_ARTIFACTS', 'CRP_NO_UPLOAD', 'CRP_OUTCOMES', 'CRP_JOBS', 'CRP_REPOSITORY', 'CRP_NO_ISSUE')) {
+    foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_RELEASE_HISTORY', 'CRP_MERGE_TARGET', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_DENY_FINDINGS', 'CRP_BATCHES', 'CRP_BATCH', 'CRP_ARTIFACTS', 'CRP_NO_UPLOAD', 'CRP_OUTCOMES', 'CRP_JOBS', 'CRP_REPOSITORY', 'CRP_NO_ISSUE')) {
         $script:OriginalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
     }
     foreach ($name in @('CRP_ACTION_PATH', 'CRP_INSTALL_METHOD', 'CRP_SOURCE_PATH', 'GITHUB_OUTPUT', 'GITHUB_PATH', 'RUNNER_TEMP', 'RUNNER_OS', 'RUNNER_ARCH')) {
@@ -25,7 +25,9 @@ Describe 'Action command forwarding' {
         $env:GITHUB_WORKSPACE = $TestDrive
         $env:CRP_EXECUTABLE = Join-Path $TestDrive 'selected-executable'
         $env:CRP_WORKING_DIRECTORY = 'nested workspace'
-        $env:CRP_BASE = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        $env:CRP_BASE = ''
+        $env:CRP_RELEASE_HISTORY = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
+        $env:CRP_MERGE_TARGET = ''
         $env:CRP_CONFIG = '.cargo/release_plan.toml'
         $env:CRP_SOURCE = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb'
         $env:CRP_PUBLICATION = Join-Path $TestDrive 'original intent/publication.json'
@@ -92,8 +94,9 @@ Describe 'Action command forwarding' {
         $workflow | Should -Not -Match 'workflow_dispatch:|contents: write'
     }
 
-    It 'keeps queue readiness narrow with the explicit baseline and selected workspace' {
+    It 'keeps queue readiness narrow with distinct history and target in the selected workspace' {
         $env:CRP_COMMAND = 'version-readiness'
+        $env:CRP_MERGE_TARGET = 'cccccccccccccccccccccccccccccccccccccccc'
         $originalDirectory = (Get-Location).Path
         Mock Invoke-BootstrapCommand {
             (Get-Location).Path | Should -Be (Join-Path $TestDrive 'nested workspace')
@@ -102,14 +105,18 @@ Describe 'Action command forwarding' {
         (Get-Location).Path | Should -Be $originalDirectory
         Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
             $Executable -eq $env:CRP_EXECUTABLE -and
-            ($Arguments -join '|') -eq "check|--manifest-path|Cargo.toml|--base|$env:CRP_BASE|--format|github"
+            ($Arguments -join '|') -eq "check|--manifest-path|Cargo.toml|--release-history|$env:CRP_RELEASE_HISTORY|--merge-target|$env:CRP_MERGE_TARGET|--format|github"
         }
     }
 
-    It 'rejects a mutable baseline before invoking Cargo' {
+    It 'requires explicit immutable release history for readiness' -ForEach @(
+        @{ History = 'main' }
+        @{ History = '' }
+    ) {
         $env:CRP_COMMAND = 'version-readiness'
-        $env:CRP_BASE = 'main'
-        { & $script:InvokeAction } | Should -Throw '*immutable base*'
+        $env:CRP_RELEASE_HISTORY = $History
+        $env:CRP_MERGE_TARGET = 'cccccccccccccccccccccccccccccccccccccccc'
+        { & $script:InvokeAction } | Should -Throw '*immutable release-history*'
         Should -Invoke Invoke-BootstrapCommand -Times 0
     }
 
@@ -119,7 +126,7 @@ Describe 'Action command forwarding' {
         & $script:InvokeAction
         Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
             $Executable -eq $env:CRP_EXECUTABLE -and
-            ($Arguments -join '|') -eq "check|--manifest-path|Cargo.toml|--base|$env:CRP_BASE|--format|github|--config|.cargo/custom release.toml"
+            ($Arguments -join '|') -eq "check|--manifest-path|Cargo.toml|--release-history|$env:CRP_RELEASE_HISTORY|--format|github|--config|.cargo/custom release.toml"
         }
     }
 
@@ -242,20 +249,70 @@ Describe 'Action command forwarding' {
         (Get-Location).Path | Should -Be $originalDirectory
     }
 
-    It 'forwards release context and optional tested base without choosing branch policy' {
+    It 'forwards context history and merge target without choosing branch policy' {
         $env:CRP_COMMAND = 'release-context'
+        $env:CRP_MERGE_TARGET = 'cccccccccccccccccccccccccccccccccccccccc'
         & $script:InvokeAction
         Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
-            ($Arguments -join '|') -eq "release-context|--manifest-path|Cargo.toml|--config|$env:CRP_CONFIG|--base|$env:CRP_BASE"
+            ($Arguments -join '|') -eq "release-context|--manifest-path|Cargo.toml|--config|$env:CRP_CONFIG|--release-history|$env:CRP_RELEASE_HISTORY|--merge-target|$env:CRP_MERGE_TARGET"
         }
     }
 
-    It 'enforces compatibility findings against the selected immutable baseline' {
-        $env:CRP_COMMAND = 'check-compatibility'
+    It 'leaves actual history acquisition to context when only a merge target is supplied' {
+        $env:CRP_COMMAND = 'release-context'
+        $env:CRP_RELEASE_HISTORY = ''
+        $env:CRP_MERGE_TARGET = 'cccccccccccccccccccccccccccccccccccccccc'
         & $script:InvokeAction
         Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
-            ($Arguments -join '|') -eq "check-compatibility|--manifest-path|Cargo.toml|--output|$env:CRP_OUTPUT|--base|$env:CRP_BASE|--deny-findings"
+            ($Arguments -join '|') -eq "release-context|--manifest-path|Cargo.toml|--config|$env:CRP_CONFIG|--merge-target|$env:CRP_MERGE_TARGET"
         }
+    }
+
+    It 'preserves a core stale-target failure rather than guessing another target' {
+        $env:CRP_COMMAND = 'release-context'
+        $env:CRP_MERGE_TARGET = 'cccccccccccccccccccccccccccccccccccccccc'
+        Mock Invoke-BootstrapCommand { throw 'Merge target diverges; refresh or rebase.' }
+        { & $script:InvokeAction } | Should -Throw '*refresh or rebase*'
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -Exactly
+    }
+
+    It 'enforces compatibility against the same resolved history and target' {
+        $env:CRP_COMMAND = 'check-compatibility'
+        $env:CRP_MERGE_TARGET = 'cccccccccccccccccccccccccccccccccccccccc'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            ($Arguments -join '|') -eq "check-compatibility|--manifest-path|Cargo.toml|--output|$env:CRP_OUTPUT|--release-history|$env:CRP_RELEASE_HISTORY|--merge-target|$env:CRP_MERGE_TARGET|--deny-findings"
+        }
+    }
+
+    It 'keeps base as a history-only alias for <Command>' -ForEach @(
+        @{ Command = 'version-readiness' }
+        @{ Command = 'check' }
+        @{ Command = 'release-context' }
+        @{ Command = 'check-compatibility' }
+    ) {
+        $env:CRP_COMMAND = $Command
+        $env:CRP_BASE = $env:CRP_RELEASE_HISTORY
+        $env:CRP_RELEASE_HISTORY = ''
+        $env:CRP_MERGE_TARGET = 'cccccccccccccccccccccccccccccccccccccccc'
+        & $script:InvokeAction
+        Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {
+            $Arguments[$Arguments.IndexOf('--release-history') + 1] -ceq $env:CRP_BASE -and
+            $Arguments[$Arguments.IndexOf('--merge-target') + 1] -ceq $env:CRP_MERGE_TARGET -and
+            $Arguments -notcontains '--base'
+        }
+    }
+
+    It 'rejects both history spellings before executing <Command>' -ForEach @(
+        @{ Command = 'version-readiness' }
+        @{ Command = 'check' }
+        @{ Command = 'release-context' }
+        @{ Command = 'check-compatibility' }
+    ) {
+        $env:CRP_COMMAND = $Command
+        $env:CRP_BASE = $env:CRP_RELEASE_HISTORY
+        { & $script:InvokeAction } | Should -Throw '*aliases; supply only one*'
+        Should -Invoke Invoke-BootstrapCommand -Times 0
     }
 
     It 'forwards captured compatibility inputs without accepting detached reports' -ForEach @(
@@ -263,7 +320,7 @@ Describe 'Action command forwarding' {
         @{ Field = 'PLAN'; Flag = '--plan' }
     ) {
         $env:CRP_COMMAND = 'check-compatibility'
-        $env:CRP_BASE = ''
+        $env:CRP_RELEASE_HISTORY = ''
         [Environment]::SetEnvironmentVariable("CRP_$Field", 'captured.json')
         & $script:InvokeAction
         Should -Invoke Invoke-BootstrapCommand -Times 1 -ParameterFilter {

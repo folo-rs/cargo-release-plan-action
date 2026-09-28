@@ -70,6 +70,12 @@ selected checkout even if its declared version matches an existing binary.
 The bootstrap explicitly selects the installation compiler; consumer rustup
 overrides cannot silently select an older compiler.
 
+The read-only installation canary invokes the standalone `version` command
+before creating its consumer workspace and checks the supported schema inventory.
+Short `--version` probes and the root action's `version` command keep their
+executable-identity role; schema discovery does not replace exact installation
+pins or introduce runtime schema conversion.
+
 The published-source path uses `cargo install --version =<version> --locked`.
 The binstall path installs its exact installer and permits normal archive or
 source fallback into the same isolated `--root`. Published-archive acceptance must separately disable source
@@ -78,14 +84,21 @@ acceptance gate.
 
 ## Offline invocation
 
-`version-readiness` forwards `check` with the selected manifest, immutable baseline
-and GitHub diagnostic format. It deliberately omits publication configuration.
+`version-readiness` forwards `check` with the selected manifest, immutable actual
+release history, optional merge target and GitHub diagnostic format. It
+deliberately omits publication configuration.
 The `check` action operation additionally passes one workspace-relative `--config`
 path. Rust owns parsing and validating that file. The action does not infer
 success from diagnostic text or hide the executable's failure.
 
 Both operations are offline checks, not a replacement for the external
 compatibility checker in the full pull-request gate.
+
+The root `release-history` input maps to `--release-history`; `base` is a legacy
+alias for the same input, not a second history or a merge target. Supplying both
+is rejected even if their values match. `merge-target` maps independently to
+`--merge-target`. The CLI remains responsible for captured-input combinations
+and Git relationships; the action does not add an ancestry or release resolver.
 
 ## Publication preparation
 
@@ -141,13 +154,32 @@ exchange is part of this action-side proof.
 
 `check.yml` resolves configured release history through the installed controller,
 checks versions and publication inputs, then invokes `check-compatibility` with
-the same immutable baseline and `--deny-findings`. Rust captures and verifies the
-actual source for that comparison. Fork pull requests use ordinary read-only
-execution, never `pull_request_target`.
-PRs fetch the configured release branch independently of their PR base; push,
-schedule and manual checks retain their tested invocation SHA as the baseline.
+the same immutable history/target pair and `--deny-findings`. Rust captures and
+verifies the actual source for that comparison. Fork pull requests use ordinary
+read-only execution, never `pull_request_target`.
+
+Context schema 2 supplies `release_history` and nullable `merge_target` alongside
+the existing source, repository and concurrency identities. The routing helper
+checks their representation and caller identity, without interpreting ancestry.
+The workflow forwards the normalized target, including its absence, rather than
+reusing the raw event target after context resolution. The publication workflow
+uses the same context-v2 reader for source and lock routing without a PR target.
+
+The small event adapter reads `pull_request.base.sha` for PRs and
+`merge_group.base_sha` for queue groups as target proposals. It does not inspect
+branch names, group membership, commits or GitHub APIs. Push, schedule and manual
+checks supply no target and fetch configured history by default. The optional
+shared `release-history` input is for a caller-owned known history commit, never
+an automatically selected candidate HEAD. Rust removes targets equal to or
+ancestral to release history, projects a descendant snapshot as one anticipated
+unit, and rejects divergent stale targets.
+
 Compatibility still executes after a readiness failure when tool, context and
 setup prerequisites succeeded. The readiness failure is not masked.
+The existing read-only canary also exercises a real multi-commit anticipated
+parent and child: it preserves actual branch history, requires the child's own
+version movement, compares against the final parent snapshot and observes
+core-provided null normalization for targets already in selected history.
 
 `release.yml` captures source and the Rust-generated workspace concurrency group.
 Its calling job holds `queue: max` with cancellation disabled around the complete

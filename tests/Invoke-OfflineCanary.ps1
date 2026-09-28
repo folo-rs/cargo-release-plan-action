@@ -3,15 +3,30 @@ param([Parameter(Mandatory)][string] $Executable)
 
 $ErrorActionPreference = 'Stop'
 Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
+Import-Module "$PSScriptRoot/../scripts/Workflow.psm1" -Force
 $fixture = Join-Path $env:RUNNER_TEMP "release-plan-consumer-$([guid]::NewGuid())"
 $artifacts = Join-Path $env:RUNNER_TEMP "release-plan-artifacts-$([guid]::NewGuid())"
 $packageName = "release-plan-action-canary-$([guid]::NewGuid().ToString('N'))"
 $originalEnvironment = @{}
-foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_BATCHES', 'CRP_DENY_FINDINGS', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_OUTCOMES', 'CRP_REPOSITORY', 'CRP_JOBS', 'CRP_NO_ISSUE')) {
+foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_RELEASE_HISTORY', 'CRP_MERGE_TARGET', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_BATCHES', 'CRP_DENY_FINDINGS', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_OUTCOMES', 'CRP_REPOSITORY', 'CRP_JOBS', 'CRP_NO_ISSUE')) {
     $originalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 
 try {
+    # This query must work before a consumer workspace has been created.
+    $identity = (Invoke-BootstrapCommand $Executable @('version') | Out-String) | ConvertFrom-Json
+    $release = Get-Content "$PSScriptRoot/../release.json" -Raw | ConvertFrom-Json
+    if ($identity.tool_version -cne $release.tools.'cargo-release-plan'.version) {
+        throw 'Schema query identifies a different executable version.'
+    }
+    $schemas = @{ plan = 5; report = 5; prepared = 5; decisions = 1; compatibility = 1; release_context = 2 }
+    foreach ($schema in $schemas.GetEnumerator()) {
+        if ($identity.schemas.($schema.Key) -ne $schema.Value) {
+            throw "Unsupported $($schema.Key) schema in executable identity."
+        }
+    }
+    Write-Output 'Workspace-free schema query verified plan/report/prepared 5, decisions/compatibility 1 and release-context 2.'
+
     New-Item (Join-Path $fixture '.cargo') -ItemType Directory -Force | Out-Null
     # A unique unpublished library exercises nonempty registry work without reserving a crate name.
     @"
@@ -43,21 +58,98 @@ targets = ["x86_64-unknown-linux-gnu"]
     Invoke-BootstrapCommand git @('-C', $fixture, 'init', '--quiet', '--initial-branch', 'main')
     Invoke-BootstrapCommand git @('-C', $fixture, 'add', '.')
     Invoke-BootstrapCommand git @('-C', $fixture, '-c', 'user.name=Action canary', '-c', 'user.email=canary@example.invalid', 'commit', '--quiet', '-m', 'Initial fixture')
+    # Real context acquisition uses the configured URL, redirected only for this local fixture.
+    Invoke-BootstrapCommand git @('-C', $fixture, 'config', "url.$fixture.insteadOf", 'https://github.com/folo-rs/cargo-release-plan-action.git')
 
     $env:GITHUB_WORKSPACE = $fixture
     $env:CRP_EXECUTABLE = $Executable
     $env:CRP_WORKING_DIRECTORY = '.'
-    $env:CRP_BASE = Invoke-BootstrapCommand git @('-C', $fixture, 'rev-parse', 'HEAD')
+    $env:CRP_BASE = ''
+    $env:CRP_RELEASE_HISTORY = Invoke-BootstrapCommand git @('-C', $fixture, 'rev-parse', 'HEAD')
+    $env:CRP_MERGE_TARGET = ''
     $env:CRP_CONFIG = '.cargo/release_plan.toml'
     foreach ($command in @('version-readiness', 'check')) {
         $env:CRP_COMMAND = $command
         & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     }
     $env:CRP_COMMAND = 'release-context'
-    $context = (& "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1" | Out-String) | ConvertFrom-Json
-    if ($context.release_base -cne $env:CRP_BASE -or $context.head -cne $env:CRP_BASE) {
-        throw 'Release context did not retain the explicit tested baseline and source.'
+    $json = & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1" | Out-String
+    $context = Get-ContextRouting -Json $json -Repository 'folo-rs/cargo-release-plan-action'
+    if ($context.release_history -cne $env:CRP_RELEASE_HISTORY -or
+        $context.head -cne $env:CRP_RELEASE_HISTORY -or $null -ne $context.merge_target) {
+        throw 'Release context did not retain the actual history, source and absent merge target.'
     }
+
+    $history = $env:CRP_RELEASE_HISTORY
+    $manifestPath = Join-Path $fixture 'Cargo.toml'
+    Invoke-BootstrapCommand git @('-C', $fixture, 'switch', '--quiet', '--create', 'anticipated-parent')
+    (Get-Content $manifestPath -Raw).Replace('version = "0.1.0"', 'version = "0.1.1"') | Set-Content $manifestPath
+    'pub fn parent_api() {}' | Set-Content (Join-Path $fixture 'lib.rs')
+    Invoke-BootstrapCommand cargo @('+1.98.1', 'generate-lockfile', '--offline', '--manifest-path', $manifestPath)
+    Invoke-BootstrapCommand git @('-C', $fixture, 'add', '.')
+    Invoke-BootstrapCommand git @('-C', $fixture, '-c', 'user.name=Action canary', '-c', 'user.email=canary@example.invalid', 'commit', '--quiet', '-m', 'Parent version')
+    'pub fn parent_api() {} pub fn parent_final_api() {}' | Set-Content (Join-Path $fixture 'lib.rs')
+    Invoke-BootstrapCommand git @('-C', $fixture, 'add', '.')
+    Invoke-BootstrapCommand git @('-C', $fixture, '-c', 'user.name=Action canary', '-c', 'user.email=canary@example.invalid', 'commit', '--quiet', '-m', 'Parent final snapshot')
+    $parent = Invoke-BootstrapCommand git @('-C', $fixture, 'rev-parse', 'HEAD')
+    Invoke-BootstrapCommand git @('-C', $fixture, 'switch', '--quiet', '--create', 'anticipated-child')
+    'pub fn parent_api() {} pub fn parent_final_api() {} pub fn child_api() {}' | Set-Content (Join-Path $fixture 'lib.rs')
+    $env:CRP_RELEASE_HISTORY = ''
+    $event = @{ pull_request = @{ base = @{ sha = $parent; ref = 'anticipated-parent' } } } | ConvertTo-Json -Depth 4
+    $env:CRP_MERGE_TARGET = Get-CheckMergeTarget -EventName pull_request -EventJson $event
+    $env:CRP_COMMAND = 'release-context'
+    $json = & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1" | Out-String
+    $context = Get-ContextRouting -Json $json -Repository 'folo-rs/cargo-release-plan-action'
+    if ($context.release_history -cne $history -or $context.merge_target -cne $parent) {
+        throw 'Stacked PR context conflated actual main history with its unmerged parent snapshot.'
+    }
+    $env:CRP_RELEASE_HISTORY = $context.release_history
+    $env:CRP_MERGE_TARGET = $context.merge_target
+    $env:CRP_COMMAND = 'version-readiness'
+    $rejected = $false
+    try { & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1" }
+    catch {
+        $rejected = $true
+        Write-Output "Expected child increment requirement: $($_.Exception.Message)"
+    }
+    if (-not $rejected) { throw 'Changed child source reused its anticipated parent version.' }
+    (Get-Content $manifestPath -Raw).Replace('version = "0.1.1"', 'version = "0.1.2"') | Set-Content $manifestPath
+    Invoke-BootstrapCommand cargo @('+1.98.1', 'generate-lockfile', '--offline', '--manifest-path', $manifestPath)
+    foreach ($command in @('version-readiness', 'check')) {
+        $env:CRP_COMMAND = $command
+        & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
+    }
+    $env:CRP_COMMAND = 'check-compatibility'
+    $env:CRP_DENY_FINDINGS = 'true'
+    $env:CRP_PREPARED = ''
+    $env:CRP_PLAN = ''
+    $env:CRP_OUTPUT = Join-Path $artifacts 'stack-compatibility'
+    & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
+    $stack = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
+    $stackReport = Get-Content (Join-Path $env:CRP_OUTPUT 'report.json') -Raw | ConvertFrom-Json
+    if (-not $stack.completed -or $stack.findings -or $stack.packages.Count -ne 1 -or
+        -not $stack.packages[0].compared -or $stack.packages[0].baseline_version -cne '0.1.1' -or
+        $stackReport.schema_version -ne 5 -or $stackReport.release_history -cne $history -or
+        $stackReport.merge_target -cne $parent) {
+        throw 'Stack compatibility did not use the same history and final-parent version as readiness.'
+    }
+    $env:CRP_COMMAND = 'release-context'
+    $env:CRP_RELEASE_HISTORY = $parent
+    foreach ($target in @($parent, $history)) {
+        $env:CRP_MERGE_TARGET = $target
+        $json = & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1" | Out-String
+        $normalized = Get-ContextRouting -Json $json -Repository 'folo-rs/cargo-release-plan-action'
+        if ($normalized.release_history -cne $parent -or $null -ne $normalized.merge_target) {
+            throw 'A merge target already in selected history was not normalized to null.'
+        }
+    }
+    Invoke-BootstrapCommand git @('-C', $fixture, 'add', '.')
+    Invoke-BootstrapCommand git @('-C', $fixture, '-c', 'user.name=Action canary', '-c', 'user.email=canary@example.invalid', 'commit', '--quiet', '-m', 'Child version')
+    Invoke-BootstrapCommand git @('-C', $fixture, 'switch', '--quiet', 'main')
+    $env:CRP_RELEASE_HISTORY = $history
+    $env:CRP_MERGE_TARGET = ''
+    Write-Output 'Actual-history acquisition, anticipated-parent readiness/compatibility and target normalization passed.'
+
     $env:CRP_COMMAND = 'check-compatibility'
     $env:CRP_DENY_FINDINGS = 'true'
     $env:CRP_PREPARED = ''
@@ -89,11 +181,9 @@ targets = ["x86_64-unknown-linux-gnu"]
         Write-Output "Expected missing-config rejection: $($_.Exception.Message)"
     }
     if (-not $rejected) { throw 'Configured check accepted a missing configuration.' }
-    # Match the Rust integration fixture: real fetch arguments, repository-local transport.
-    Invoke-BootstrapCommand git @('-C', $fixture, 'config', "url.$fixture.insteadOf", 'https://github.com/folo-rs/cargo-release-plan-action.git')
     $env:CRP_COMMAND = 'prepare-publish'
     $env:CRP_CONFIG = '.cargo/release_plan.toml'
-    $env:CRP_SOURCE = $env:CRP_BASE
+    $env:CRP_SOURCE = $env:CRP_RELEASE_HISTORY
     $env:CRP_OUTPUT = Join-Path $artifacts 'publication.json'
     & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     $publication = Get-Content $env:CRP_OUTPUT -Raw | ConvertFrom-Json

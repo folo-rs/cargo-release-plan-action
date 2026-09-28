@@ -17,7 +17,13 @@ inputs:
     description: Folo source checkout used only by path installation.
     default: .
   base:
-    description: Release baseline for version-readiness, check, release-context or check-compatibility.
+    description: Legacy alias for release-history; do not supply both.
+    default: ''
+  release-history:
+    description: Actual release-branch history for version-readiness, check, release-context or check-compatibility.
+    default: ''
+  merge-target:
+    description: Optional target snapshot for version-readiness, check, release-context or check-compatibility; not release history.
     default: ''
   source:
     description: Full immutable release source SHA for prepare-publish.
@@ -29,7 +35,7 @@ inputs:
     description: New output file or directory for the selected command. Keep outside source or ignored.
     default: ''
   prepared:
-    description: Captured prepared inputs for check-compatibility, exclusive with plan and base.
+    description: Captured prepared inputs for check-compatibility, exclusive with fresh history/target inputs and plan.
     default: ''
   plan:
     description: Resolved plan for check-compatibility or check-published.
@@ -117,6 +123,8 @@ runs:
         CRP_COMMAND: ${{ inputs.command }}
         CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
         CRP_BASE: ${{ inputs.base }}
+        CRP_RELEASE_HISTORY: ${{ inputs.release-history }}
+        CRP_MERGE_TARGET: ${{ inputs.merge-target }}
         CRP_CONFIG: ${{ inputs.config }}
         CRP_SOURCE: ${{ inputs.source }}
         CRP_PUBLICATION: ${{ inputs.publication }}

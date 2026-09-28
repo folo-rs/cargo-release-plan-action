@@ -40,7 +40,8 @@ Describe 'Composite command input validation' {
         $script:Inputs = @{
             command = 'version'; 'working-directory' = '.'; 'install-method' = 'binstall'; 'source-path' = '.'
             config = '.cargo/release_plan.toml'
-            base = ''; source = ''; publication = ''; output = ''; prepared = ''; plan = ''
+            'release-history' = ''; base = ''; 'merge-target' = ''
+            source = ''; publication = ''; output = ''; prepared = ''; plan = ''
             batches = ''; batch = ''; artifacts = ''; outcomes = ''; jobs = ''; repository = ''
             'deny-findings' = 'false'; 'dry-run' = 'false'; 'no-upload' = 'false'; 'no-issue' = 'false'
         }
@@ -75,6 +76,8 @@ Describe 'Composite command input validation' {
         @{ Command = 'version'; InputName = 'output'; Value = 'outcome.json' }
         @{ Command = 'version'; InputName = 'dry-run'; Value = 'true' }
         @{ Command = 'version'; InputName = 'config'; Value = '.cargo/another.toml' }
+        @{ Command = 'version'; InputName = 'release-history'; Value = 'a' * 40 }
+        @{ Command = 'version'; InputName = 'merge-target'; Value = 'b' * 40 }
         @{ Command = 'version-readiness'; InputName = 'config'; Value = '.cargo/another.toml' }
         @{ Command = 'check'; InputName = 'deny-findings'; Value = 'true' }
         @{ Command = 'release-context'; InputName = 'source'; Value = 'abc' }
@@ -88,6 +91,8 @@ Describe 'Composite command input validation' {
         @{ Command = 'publish-binaries'; InputName = 'no-issue'; Value = 'true' }
         @{ Command = 'publish-report'; InputName = 'config'; Value = '.cargo/another.toml' }
         @{ Command = 'publish-report'; InputName = 'artifacts'; Value = 'staging' }
+        @{ Command = 'publish-registry'; InputName = 'release-history'; Value = 'a' * 40 }
+        @{ Command = 'prepare-publish'; InputName = 'merge-target'; Value = 'b' * 40 }
     ) {
         $script:Inputs.command = $Command
         $script:Inputs[$InputName] = $Value
@@ -104,6 +109,10 @@ Describe 'Composite command input validation' {
         @{ Command = 'check'; Values = @{ base = 'a' * 40; config = 'custom.toml' } }
         @{ Command = 'release-context'; Values = @{ base = 'a' * 40; config = 'custom.toml' } }
         @{ Command = 'check-compatibility'; Values = @{ base = 'a' * 40; output = 'evidence'; 'deny-findings' = 'true' } }
+        @{ Command = 'version-readiness'; Values = @{ 'release-history' = 'a' * 40; 'merge-target' = 'b' * 40 } }
+        @{ Command = 'check'; Values = @{ 'release-history' = 'a' * 40; 'merge-target' = 'b' * 40; config = 'custom.toml' } }
+        @{ Command = 'release-context'; Values = @{ 'merge-target' = 'b' * 40; config = 'custom.toml' } }
+        @{ Command = 'check-compatibility'; Values = @{ 'release-history' = 'a' * 40; 'merge-target' = 'b' * 40; output = 'evidence' } }
         @{ Command = 'check-compatibility'; Values = @{ prepared = 'prepared.json'; output = 'evidence' } }
         @{ Command = 'check-compatibility'; Values = @{ plan = 'plan.json'; output = 'evidence' } }
         @{ Command = 'check-published'; Values = @{ plan = 'plan.json' } }
@@ -138,5 +147,19 @@ Describe 'Composite command input validation' {
         $script:Inputs.command = 'not-a-command'
         { Invoke-InputPreparation } | Should -Throw '*Unsupported action command*'
         Should -Invoke Get-InstallationSettings -Times 0
+    }
+
+    It 'rejects canonical history and its alias together before installation for <Command>' -ForEach @(
+        @{ Command = 'version-readiness' }
+        @{ Command = 'check' }
+        @{ Command = 'release-context' }
+        @{ Command = 'check-compatibility' }
+    ) {
+        $script:Inputs.command = $Command
+        $script:Inputs['release-history'] = 'a' * 40
+        $script:Inputs.base = 'a' * 40
+        { Invoke-InputPreparation } | Should -Throw '*aliases; supply only one*'
+        Should -Invoke Get-InstallationSettings -Times 0
+        Should -Invoke Invoke-BootstrapCommand -Times 0
     }
 }
