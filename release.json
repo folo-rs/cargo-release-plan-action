@@ -4,7 +4,7 @@
   "install_toolchain": "1.98.1",
   "cargo_binstall_version": "1.23.0",
   "tools": {
-    "cargo-release-plan": { "version": "0.5.1" },
+    "cargo-release-plan": { "version": "0.5.2" },
     "cargo-semver-checks": { "version": "0.50.0" }
   },
   "platforms": [
