@@ -40,7 +40,7 @@ Describe 'Composite command input validation' {
         $script:Inputs = @{
             command = 'version'; 'working-directory' = '.'; 'install-method' = 'binstall'; 'source-path' = '.'
             config = '.cargo/release_plan.toml'
-            'release-history' = ''; base = ''; 'merge-target' = ''
+            'release-history' = ''; 'merge-target' = ''
             source = ''; publication = ''; output = ''; prepared = ''; plan = ''
             batches = ''; batch = ''; artifacts = ''; outcomes = ''; jobs = ''; repository = ''
             'deny-findings' = 'false'; 'dry-run' = 'false'; 'no-upload' = 'false'; 'no-issue' = 'false'
@@ -82,7 +82,7 @@ Describe 'Composite command input validation' {
         @{ Command = 'check'; InputName = 'deny-findings'; Value = 'true' }
         @{ Command = 'release-context'; InputName = 'source'; Value = 'abc' }
         @{ Command = 'check-compatibility'; InputName = 'config'; Value = '.cargo/another.toml' }
-        @{ Command = 'check-published'; InputName = 'base'; Value = 'abc' }
+        @{ Command = 'check-published'; InputName = 'release-history'; Value = 'a' * 40 }
         @{ Command = 'check-publishing-identity'; InputName = 'publication'; Value = 'publication.json' }
         @{ Command = 'prepare-publish'; InputName = 'dry-run'; Value = 'true' }
         @{ Command = 'publish-registry'; InputName = 'batch'; Value = 'batch.json' }
@@ -105,10 +105,10 @@ Describe 'Composite command input validation' {
     }
 
     It 'accepts applicable nondefault inputs for <Command>' -ForEach @(
-        @{ Command = 'version-readiness'; Values = @{ base = 'a' * 40 } }
-        @{ Command = 'check'; Values = @{ base = 'a' * 40; config = 'custom.toml' } }
-        @{ Command = 'release-context'; Values = @{ base = 'a' * 40; config = 'custom.toml' } }
-        @{ Command = 'check-compatibility'; Values = @{ base = 'a' * 40; output = 'evidence'; 'deny-findings' = 'true' } }
+        @{ Command = 'version-readiness'; Values = @{ 'release-history' = 'a' * 40 } }
+        @{ Command = 'check'; Values = @{ 'release-history' = 'a' * 40; config = 'custom.toml' } }
+        @{ Command = 'release-context'; Values = @{ 'release-history' = 'a' * 40; config = 'custom.toml' } }
+        @{ Command = 'check-compatibility'; Values = @{ 'release-history' = 'a' * 40; output = 'evidence'; 'deny-findings' = 'true' } }
         @{ Command = 'version-readiness'; Values = @{ 'release-history' = 'a' * 40; 'merge-target' = 'b' * 40 } }
         @{ Command = 'check'; Values = @{ 'release-history' = 'a' * 40; 'merge-target' = 'b' * 40; config = 'custom.toml' } }
         @{ Command = 'release-context'; Values = @{ 'merge-target' = 'b' * 40; config = 'custom.toml' } }
@@ -147,19 +147,5 @@ Describe 'Composite command input validation' {
         $script:Inputs.command = 'not-a-command'
         { Invoke-InputPreparation } | Should -Throw '*Unsupported action command*'
         Should -Invoke Get-InstallationSettings -Times 0
-    }
-
-    It 'rejects canonical history and its alias together before installation for <Command>' -ForEach @(
-        @{ Command = 'version-readiness' }
-        @{ Command = 'check' }
-        @{ Command = 'release-context' }
-        @{ Command = 'check-compatibility' }
-    ) {
-        $script:Inputs.command = $Command
-        $script:Inputs['release-history'] = 'a' * 40
-        $script:Inputs.base = 'a' * 40
-        { Invoke-InputPreparation } | Should -Throw '*aliases; supply only one*'
-        Should -Invoke Get-InstallationSettings -Times 0
-        Should -Invoke Invoke-BootstrapCommand -Times 0
     }
 }

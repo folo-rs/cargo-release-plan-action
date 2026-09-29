@@ -23,10 +23,10 @@ function Assert-CommandInputs {
     $allowed = @{
         version = @()
         'check-publishing-identity' = @()
-        'version-readiness' = @('release-history', 'base', 'merge-target')
-        check = @('release-history', 'base', 'merge-target', 'config')
-        'release-context' = @('release-history', 'base', 'merge-target', 'config')
-        'check-compatibility' = @('release-history', 'base', 'merge-target', 'prepared', 'plan', 'output', 'deny-findings')
+        'version-readiness' = @('release-history', 'merge-target')
+        check = @('release-history', 'merge-target', 'config')
+        'release-context' = @('release-history', 'merge-target', 'config')
+        'check-compatibility' = @('release-history', 'merge-target', 'prepared', 'plan', 'output', 'deny-findings')
         'check-published' = @('plan')
         'prepare-publish' = @('config', 'source', 'output')
         'publish-registry' = @('publication', 'output', 'dry-run')
@@ -35,14 +35,11 @@ function Assert-CommandInputs {
         'publish-report' = @('repository', 'publication', 'outcomes', 'jobs', 'output', 'no-issue')
     }
     if (-not $allowed.ContainsKey($Command)) { throw "Unsupported action command '$Command'." }
-    if ($Inputs['release-history'] -and $Inputs['base']) {
-        throw 'Inputs release-history and base are aliases; supply only one.'
-    }
 
     # GitHub supplies all composite defaults, including those irrelevant to the selected command.
     $defaults = @{
         config = '.cargo/release_plan.toml'
-        'release-history' = ''; base = ''; 'merge-target' = ''
+        'release-history' = ''; 'merge-target' = ''
         source = ''; publication = ''; output = ''; prepared = ''; plan = ''
         batches = ''; batch = ''; artifacts = ''; outcomes = ''; jobs = ''; repository = ''
         'deny-findings' = 'false'; 'dry-run' = 'false'; 'no-upload' = 'false'; 'no-issue' = 'false'

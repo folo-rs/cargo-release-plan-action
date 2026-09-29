@@ -5,10 +5,7 @@ Import-Module "$PSScriptRoot/Bootstrap.psm1" -Force
 $releaseHistory = $null
 $assessmentArguments = @()
 if ($env:CRP_COMMAND -in @('version-readiness', 'check', 'release-context', 'check-compatibility')) {
-    if ($env:CRP_RELEASE_HISTORY -and $env:CRP_BASE) {
-        throw 'Inputs release-history and base are aliases; supply only one.'
-    }
-    $releaseHistory = if ($env:CRP_RELEASE_HISTORY) { $env:CRP_RELEASE_HISTORY } else { $env:CRP_BASE }
+    $releaseHistory = $env:CRP_RELEASE_HISTORY
     if ($releaseHistory) { $assessmentArguments += @('--release-history', $releaseHistory) }
     if ($env:CRP_MERGE_TARGET) { $assessmentArguments += @('--merge-target', $env:CRP_MERGE_TARGET) }
 }

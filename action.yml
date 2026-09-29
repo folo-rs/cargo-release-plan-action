@@ -16,9 +16,6 @@ inputs:
   source-path:
     description: Folo source checkout used only by path installation.
     default: .
-  base:
-    description: Legacy alias for release-history; do not supply both.
-    default: ''
   release-history:
     description: Actual release-branch history for version-readiness, check, release-context or check-compatibility.
     default: ''
@@ -122,7 +119,6 @@ runs:
         CRP_EXECUTABLE: ${{ steps.install.outputs.executable }}
         CRP_COMMAND: ${{ inputs.command }}
         CRP_WORKING_DIRECTORY: ${{ inputs.working-directory }}
-        CRP_BASE: ${{ inputs.base }}
         CRP_RELEASE_HISTORY: ${{ inputs.release-history }}
         CRP_MERGE_TARGET: ${{ inputs.merge-target }}
         CRP_CONFIG: ${{ inputs.config }}

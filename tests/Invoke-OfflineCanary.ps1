@@ -8,7 +8,7 @@ $fixture = Join-Path $env:RUNNER_TEMP "release-plan-consumer-$([guid]::NewGuid()
 $artifacts = Join-Path $env:RUNNER_TEMP "release-plan-artifacts-$([guid]::NewGuid())"
 $packageName = "release-plan-action-canary-$([guid]::NewGuid().ToString('N'))"
 $originalEnvironment = @{}
-foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_BASE', 'CRP_RELEASE_HISTORY', 'CRP_MERGE_TARGET', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_BATCHES', 'CRP_DENY_FINDINGS', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_OUTCOMES', 'CRP_REPOSITORY', 'CRP_JOBS', 'CRP_NO_ISSUE')) {
+foreach ($name in @('GITHUB_WORKSPACE', 'CRP_EXECUTABLE', 'CRP_COMMAND', 'CRP_WORKING_DIRECTORY', 'CRP_RELEASE_HISTORY', 'CRP_MERGE_TARGET', 'CRP_CONFIG', 'CRP_SOURCE', 'CRP_PUBLICATION', 'CRP_OUTPUT', 'CRP_DRY_RUN', 'CRP_BATCHES', 'CRP_DENY_FINDINGS', 'CRP_PLAN', 'CRP_PREPARED', 'CRP_OUTCOMES', 'CRP_REPOSITORY', 'CRP_JOBS', 'CRP_NO_ISSUE')) {
     $originalEnvironment[$name] = [Environment]::GetEnvironmentVariable($name)
 }
 
@@ -19,13 +19,13 @@ try {
     if ($identity.tool_version -cne $release.tools.'cargo-release-plan'.version) {
         throw 'Schema query identifies a different executable version.'
     }
-    $schemas = @{ plan = 5; report = 5; prepared = 5; decisions = 1; compatibility = 1; release_context = 2 }
+    $schemas = @{ plan = 6; report = 6; prepared = 6; decisions = 2; compatibility = 2; release_context = 2 }
     foreach ($schema in $schemas.GetEnumerator()) {
         if ($identity.schemas.($schema.Key) -ne $schema.Value) {
             throw "Unsupported $($schema.Key) schema in executable identity."
         }
     }
-    Write-Output 'Workspace-free schema query verified plan/report/prepared 5, decisions/compatibility 1 and release-context 2.'
+    Write-Output 'Workspace-free schema query verified plan/report/prepared 6, decisions/compatibility 2 and release-context 2.'
 
     New-Item (Join-Path $fixture '.cargo') -ItemType Directory -Force | Out-Null
     # A unique unpublished library exercises nonempty registry work without reserving a crate name.
@@ -64,7 +64,6 @@ targets = ["x86_64-unknown-linux-gnu"]
     $env:GITHUB_WORKSPACE = $fixture
     $env:CRP_EXECUTABLE = $Executable
     $env:CRP_WORKING_DIRECTORY = '.'
-    $env:CRP_BASE = ''
     $env:CRP_RELEASE_HISTORY = Invoke-BootstrapCommand git @('-C', $fixture, 'rev-parse', 'HEAD')
     $env:CRP_MERGE_TARGET = ''
     $env:CRP_CONFIG = '.cargo/release_plan.toml'
@@ -127,9 +126,10 @@ targets = ["x86_64-unknown-linux-gnu"]
     & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     $stack = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
     $stackReport = Get-Content (Join-Path $env:CRP_OUTPUT 'report.json') -Raw | ConvertFrom-Json
-    if (-not $stack.completed -or $stack.findings -or $stack.packages.Count -ne 1 -or
+    if ($stack.schema_version -ne 2 -or -not $stack.completed -or $stack.findings -or $stack.packages.Count -ne 1 -or
         -not $stack.packages[0].compared -or $stack.packages[0].baseline_version -cne '0.1.1' -or
-        $stackReport.schema_version -ne 5 -or $stackReport.release_history -cne $history -or
+        $stack.packages[0].PSObject.Properties.Name -notcontains 'required_impact' -or
+        $stackReport.schema_version -ne 6 -or $stackReport.release_history -cne $history -or
         $stackReport.merge_target -cne $parent) {
         throw 'Stack compatibility did not use the same history and final-parent version as readiness.'
     }
@@ -157,15 +157,18 @@ targets = ["x86_64-unknown-linux-gnu"]
     $env:CRP_OUTPUT = Join-Path $artifacts 'compatibility'
     & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     $compatibility = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
-    if (-not $compatibility.completed -or $compatibility.findings -or $compatibility.packages.Count) {
+    if ($compatibility.schema_version -ne 2 -or -not $compatibility.completed -or
+        $compatibility.findings -or $compatibility.packages.Count) {
         throw 'Unchanged source must produce explicit empty compatibility evidence.'
     }
     'pub fn canary_api() {}' | Set-Content (Join-Path $fixture 'lib.rs')
     $env:CRP_OUTPUT = Join-Path $artifacts 'selected-compatibility'
     & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     $comparison = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
-    if (-not $comparison.completed -or $comparison.checker -notmatch '0\.50\.0' -or
-        $comparison.packages.Count -ne 1 -or $comparison.packages[0].compared) {
+    if ($comparison.schema_version -ne 2 -or -not $comparison.completed -or $comparison.checker -notmatch '0\.50\.0' -or
+        $comparison.packages.Count -ne 1 -or $comparison.packages[0].compared -or
+        $comparison.packages[0].PSObject.Properties.Name -notcontains 'required_impact' -or
+        $null -ne $comparison.packages[0].required_impact) {
         throw 'Real checker canary must run while an unpublished comparison remains explicitly unavailable.'
     }
     '' | Set-Content (Join-Path $fixture 'lib.rs')

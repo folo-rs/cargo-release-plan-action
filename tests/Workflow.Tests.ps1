@@ -92,7 +92,7 @@ Describe 'Release graph invariants' {
         $workflow | Should -Match 'Get-CheckMergeTarget -EventName \$env:GITHUB_EVENT_NAME'
         ([regex]::Matches($workflow, [regex]::Escape('CRP_RELEASE_HISTORY: ${{ steps.context.outputs.release-history }}'))).Count | Should -Be 2
         ([regex]::Matches($workflow, [regex]::Escape('CRP_MERGE_TARGET: ${{ steps.context.outputs.merge-target }}'))).Count | Should -Be 2
-        $workflow | Should -Not -Match 'CRP_BASE:|github.sha'
+        $workflow | Should -Not -Match 'github.sha'
     }
 
     It 'preserves failed reconciliation while allowing registry-gated independent batches' {
@@ -198,7 +198,7 @@ Describe 'Release history and target routing' {
         @{ Event = 'schedule' }
         @{ Event = 'workflow_dispatch' }
     ) {
-        $event = @{ after = 'c' * 40; ref = 'refs/heads/feature'; inputs = @{ base = 'b' * 40 } }
+        $event = @{ after = 'c' * 40; ref = 'refs/heads/feature'; inputs = @{ 'release-history' = 'b' * 40 } }
         Get-CheckMergeTarget -EventName $Event -EventJson ($event | ConvertTo-Json) | Should -Be ''
     }
 

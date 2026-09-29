@@ -72,6 +72,8 @@ overrides cannot silently select an older compiler.
 
 The read-only installation canary invokes the standalone `version` command
 before creating its consumer workspace and checks the supported schema inventory.
+It verifies compatibility schema 2 with `required_impact` alongside the source-bound
+schema-6 report, including an explicit null impact when a comparison is unavailable.
 Short `--version` probes and the root action's `version` command keep their
 executable-identity role; schema discovery does not replace exact installation
 pins or introduce runtime schema conversion.
@@ -94,11 +96,10 @@ success from diagnostic text or hide the executable's failure.
 Both operations are offline checks, not a replacement for the external
 compatibility checker in the full pull-request gate.
 
-The root `release-history` input maps to `--release-history`; `base` is a legacy
-alias for the same input, not a second history or a merge target. Supplying both
-is rejected even if their values match. `merge-target` maps independently to
-`--merge-target`. The CLI remains responsible for captured-input combinations
-and Git relationships; the action does not add an ancestry or release resolver.
+The root `release-history` input maps to `--release-history`; `merge-target` maps
+independently to `--merge-target`. The CLI remains responsible for captured-input
+combinations and Git relationships; the action does not add an ancestry or
+release resolver.
 
 ## Publication preparation
 

@@ -4,7 +4,7 @@ Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
 **Release candidate, not a published action release.** `release.json` selects
-action 0.1.0, `cargo-release-plan` 0.5.0 and `cargo-semver-checks` 0.50.0.
+action 0.1.0, `cargo-release-plan` 0.5.1 and `cargo-semver-checks` 0.50.0.
 Source checks do not establish that the exact crate and native archives are
 published, or authorize production cutover.
 See [release acceptance](TODO.md) for the remaining gates.
@@ -163,7 +163,6 @@ the pinned installation compiler, independently of a consumer toolchain override
 It checks the executable's exact `--version` and adds its installation directory
 to `PATH`. `version-readiness` requires a full immutable `release-history` SHA,
 accepts an optional `merge-target`, and does not run the full pull-request gate.
-`base` remains a legacy alias for `release-history`; supply only one spelling.
 The same history/target inputs apply to `check`, `release-context` and fresh
 `check-compatibility` execution. Context acquires configured history when no
 explicit history is supplied. Captured prepared/plan evidence retains its own
@@ -171,8 +170,14 @@ assessment inputs; Rust enforces the compatible input combinations.
 The action's `version` operation still returns the executable's short version
 line, not schema discovery JSON. Invoke `cargo-release-plan version` directly
 for its workspace-free JSON schema inventory. This candidate uses plan/report/
-prepared schema 5, decisions/compatibility schema 1 and release-context schema 2;
+prepared schema 6, decisions/compatibility schema 2 and release-context schema 2;
 the action continues to pin exact tested tool installations.
+
+Use the `increment-versions` skill for local version planning. Its decisions use
+`changes[].impact`, numeric plan increments use `increments[].bump` (or an explicit
+`version`), and compatibility evidence records `required_impact`. The action
+forwards resolved plan paths without interpreting those planning documents;
+application belongs to the skill's preview-produced resolved-plan workflow.
 
 Command-specific inputs must apply to the selected command. Nondefault values for
 unrelated inputs are rejected before tool installation or execution; normal empty
