@@ -12,60 +12,76 @@ permissions:
 jobs:
   acceptance:
     name: Published installation
-    needs: install
+    needs: [matrix, install]
     if: always()
     runs-on: ubuntu-24.04
     steps:
       - shell: pwsh
         env:
           INSTALL: ${{ needs.install.result }}
+          MATRIX: ${{ needs.matrix.result }}
         run: |
-          if ($env:INSTALL -ne 'success') {
+          if ($env:MATRIX -ne 'success' -or $env:INSTALL -ne 'success') {
               throw 'Exact published package, native archive and external-checker installation are required.'
           }
+  matrix:
+    runs-on: ubuntu-24.04
+    outputs:
+      legs: ${{ steps.matrix.outputs.legs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - id: matrix
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $release = Get-Content release.json -Raw | ConvertFrom-Json
+          if (@($release.platforms).Count -eq 0) { throw 'No native installation targets declared.' }
+          $legs = @(foreach ($platform in $release.platforms) {
+              foreach ($method in @('install', 'binstall')) {
+                  @{
+                      runner = $platform.runner
+                      target = $platform.target
+                      method = $method
+                      archive_only = $method -eq 'binstall'
+                  }
+              }
+          })
+          "legs=$(@{ include = $legs } | ConvertTo-Json -Depth 5 -Compress)" >> $env:GITHUB_OUTPUT
   install:
+    needs: matrix
+    name: ${{ matrix.method }} (${{ matrix.target }})
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - runner: ubuntu-24.04
-            method: install
-            archive-only: false
-          - runner: ubuntu-24.04
-            method: binstall
-            archive-only: false
-          - runner: ubuntu-24.04
-            method: binstall
-            archive-only: true
-          - runner: ubuntu-24.04-arm
-            method: binstall
-            archive-only: true
-          - runner: windows-2025
-            method: binstall
-            archive-only: true
-          - runner: windows-11-arm
-            method: binstall
-            archive-only: true
-          - runner: macos-15
-            method: binstall
-            archive-only: true
+      matrix: ${{ fromJSON(needs.matrix.outputs.legs) }}
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          ref: ${{ github.sha }}
           persist-credentials: false
       - name: Install published tool without executable caches
         shell: pwsh
         env:
           INSTALL_METHOD: ${{ matrix.method }}
-          ARCHIVE_ONLY: ${{ matrix.archive-only }}
+          ARCHIVE_ONLY: ${{ matrix.archive_only }}
+          EXPECTED_TARGET: ${{ matrix.target }}
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
           Import-Module ./scripts/Bootstrap.psm1
           $root = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
           $settings = Get-InstallationSettings -ActionPath $env:GITHUB_WORKSPACE -Method $env:INSTALL_METHOD -SourcePath . -TemporaryDirectory $root -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
+          if ($settings.Target -cne $env:EXPECTED_TARGET) { throw 'Runner does not match its manifest target.' }
           $executable = Install-ReleasePlan -Settings $settings -ArchiveOnly:($env:ARCHIVE_ONLY -eq 'true')
+          $identity = (Invoke-BootstrapCommand $executable @('version') | Out-String) | ConvertFrom-Json
+          if ($identity.tool_version -cne $settings.Version) { throw 'Schema query identifies a different tool.' }
+          $schemas = @{ plan = 6; report = 6; prepared = 6; decisions = 2; compatibility = 2; release_context = 2 }
+          foreach ($schema in $schemas.GetEnumerator()) {
+              if ($identity.schemas.($schema.Key) -ne $schema.Value) { throw "Unsupported $($schema.Key) schema." }
+          }
           $help = & $executable check --help | Out-String
           if ($LASTEXITCODE -ne 0) { throw 'Installed tool check help failed.' }
           foreach ($flag in @('--manifest-path', '--release-history', '--merge-target', '--format', '--config')) {
@@ -98,7 +114,7 @@ jobs:
                   if (-not $help.Contains($flag)) { throw "Installed operation lacks $flag." }
               }
           }
-          if ($env:INSTALL_METHOD -eq 'install') {
+          if ($env:INSTALL_METHOD -eq 'install' -and $env:EXPECTED_TARGET -eq 'x86_64-unknown-linux-gnu') {
               $checker = Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
               $env:PATH = (Split-Path $checker) + [IO.Path]::PathSeparator + $env:PATH
               & ./tests/Invoke-OfflineCanary.ps1 -Executable $executable

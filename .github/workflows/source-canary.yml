@@ -35,8 +35,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: folo-rs/folo
-          # This reviewed full-command checkpoint is not published-installation evidence.
-          ref: 99341a85c72a546cd9270a463b17dc75dc0b0a6b
+          # Released CRP source; source builds remain separate from published-installation evidence.
+          ref: c87bba72df22124f87a3c858b15e858138c7008b
           path: .source
           persist-credentials: false
       - uses: ./
@@ -56,7 +56,7 @@ jobs:
           CRP_VERSION: ${{ steps.tool.outputs.version }}
         run: |
           $ErrorActionPreference = 'Stop'
-          if ($env:CRP_VERSION -ne '0.5.2') { throw 'Unexpected source tool version.' }
+          if ($env:CRP_VERSION -ne '0.5.10') { throw 'Unexpected source tool version.' }
           if ((Get-Command cargo-release-plan).Source -ne $env:CRP_EXECUTABLE) {
               throw 'The verified executable was not added to PATH.'
           }

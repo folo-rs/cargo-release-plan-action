@@ -210,26 +210,69 @@ Describe 'Release history and target routing' {
     }
 }
 
-Describe 'Published installation acceptance' {
+Describe 'Published installation acceptance' -Tag Integration {
     BeforeAll {
         $script:OriginalInstallResult = $env:INSTALL
+        $script:OriginalMatrixResult = $env:MATRIX
+        $env:MATRIX = 'success'
         $workflow = Get-Content "$PSScriptRoot/../.github/workflows/published-installation.yml" -Raw
         $script:PublishedJobs = [regex]::Match($workflow, '(?ms)^jobs:\r?\n(.*)$').Groups[1].Value
-        $script:PublishedAcceptance = [regex]::Match($script:PublishedJobs, '(?ms)^  acceptance:\r?\n(.*?)(?=^  install:)').Groups[1].Value
+        $script:PublishedAcceptance = [regex]::Match($script:PublishedJobs, '(?ms)^  acceptance:\r?\n(.*?)(?=^  matrix:)').Groups[1].Value
         $run = [regex]::Match($script:PublishedAcceptance, '(?s)        run: \|\r?\n(.*)$').Groups[1].Value
         if (-not $run) { throw 'Published installation acceptance command is missing.' }
         $script:PublishedVerdict = [scriptblock]::Create($run)
     }
 
+    Describe 'Action self-publication workflow boundaries' -Tag Integration {
+        It 'gates a main-only serialized publisher on repeated exact-commit installation' {
+            $workflow = Get-Content "$PSScriptRoot/../.github/workflows/publish-action.yml" -Raw
+            $workflow | Should -Match 'push:\r?\n\s+branches: \[main\]'
+            $workflow | Should -Match 'workflow_dispatch:'
+            $workflow | Should -Not -Match 'pull_request:|workflow_call:|id-token:|issues: write'
+            ([regex]::Matches($workflow, "github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'")).Count | Should -Be 2
+            $workflow | Should -Match 'uses: \./\.github/workflows/published-installation.yml'
+            $workflow | Should -Match 'needs: availability'
+            $workflow | Should -Match 'cancel-in-progress: false\r?\n\s+queue: max'
+            $workflow | Should -Match 'ref: \$\{\{ github.sha \}\}'
+            $workflow | Should -Match 'fetch-depth: 0'
+            $beforePublish = $workflow.Substring(0, $workflow.IndexOf('  publish:'))
+            $beforePublish | Should -Match 'contents: read'
+            $beforePublish | Should -Not -Match 'contents: write'
+            ([regex]::Matches($workflow, 'contents: write')).Count | Should -Be 1
+            $workflow | Should -Match 'Publish-Release.ps1 -BaseRef \$base'
+        }
+
+        It 'reports required aggregates for all PR file changes including documentation' -ForEach @(
+            @{ File = 'validate.yml'; Check = 'Action validation' }
+            @{ File = 'source-canary.yml'; Check = 'Source installation' }
+            @{ File = 'published-installation.yml'; Check = 'Published installation' }
+            @{ File = 'scheduling-canary.yml'; Check = 'Workflow scheduling' }
+        ) {
+            $workflow = Get-Content (Join-Path "$PSScriptRoot/../.github/workflows" $File) -Raw
+            $workflow | Should -Match '(?m)^  pull_request:'
+            $workflow | Should -Not -Match 'paths:|paths-ignore:'
+            $workflow | Should -Match "(?m)^    name: $Check"
+            $workflow | Should -Match 'if: always\(\)'
+        }
+
+        It 'includes action version readiness in the existing validation aggregate' {
+            $workflow = Get-Content "$PSScriptRoot/../.github/workflows/validate.yml" -Raw
+            $workflow | Should -Match 'needs: \[identity, tests, workflows, version-readiness\]'
+            $workflow | Should -Match 'Get-ValidationReleaseBase -EventName \$env:GITHUB_EVENT_NAME'
+            $workflow | Should -Match 'Publish-Release.ps1 -CheckOnly -BaseRef \$base'
+        }
+    }
+
     AfterAll {
         $env:INSTALL = $script:OriginalInstallResult
+        $env:MATRIX = $script:OriginalMatrixResult
     }
 
     It 'keeps the named required gate dependent on the complete install matrix' {
         $jobs = @([regex]::Matches($script:PublishedJobs, '(?m)^  ([a-z-]+):\r?$') | ForEach-Object { $_.Groups[1].Value })
-        $jobs | Should -Be @('acceptance', 'install')
+        $jobs | Should -Be @('acceptance', 'matrix', 'install')
         $script:PublishedAcceptance | Should -Match '(?m)^    name: Published installation\r?$'
-        $script:PublishedAcceptance | Should -Match '(?m)^    needs: install\r?$'
+        $script:PublishedAcceptance | Should -Match '(?m)^    needs: \[matrix, install\]\r?$'
         $script:PublishedAcceptance | Should -Match '(?m)^    if: always\(\)\r?$'
         $script:PublishedAcceptance | Should -Match ([regex]::Escape('INSTALL: ${{ needs.install.result }}'))
     }
@@ -247,5 +290,41 @@ Describe 'Published installation acceptance' {
     ) {
         $env:INSTALL = $Result
         { & $script:PublishedVerdict } | Should -Throw '*installation are required*'
+    }
+
+    It 'rejects missing matrix generation even if installations report success' {
+        $env:INSTALL = 'success'
+        $env:MATRIX = 'failure'
+        try { { & $script:PublishedVerdict } | Should -Throw '*installation are required*' }
+        finally { $env:MATRIX = 'success' }
+    }
+
+    It 'generates fresh source and strict archive legs for every declared target' {
+        $matrixJob = [regex]::Match($script:PublishedJobs, '(?ms)^  matrix:\r?\n(.*?)(?=^  install:)').Groups[1].Value
+        $run = [regex]::Match($matrixJob, '(?s)        run: \|\r?\n(.*)$').Groups[1].Value
+        $originalOutput = $env:GITHUB_OUTPUT
+        $env:GITHUB_OUTPUT = Join-Path $TestDrive 'matrix-output'
+        Push-Location "$PSScriptRoot/.."
+        try {
+            & ([scriptblock]::Create($run))
+            $matrix = (Get-Content $env:GITHUB_OUTPUT -Raw).Trim().Substring('legs='.Length) | ConvertFrom-Json
+            $release = Get-Content release.json -Raw | ConvertFrom-Json
+            $matrix.include.Count | Should -Be ($release.platforms.Count * 2)
+            foreach ($platform in $release.platforms) {
+                $legs = @($matrix.include | Where-Object target -CEQ $platform.target)
+                $legs.Count | Should -Be 2
+                @($legs.runner | Select-Object -Unique) | Should -Be @($platform.runner)
+                @($legs.method | Sort-Object) | Should -Be @('binstall', 'install')
+                ($legs | Where-Object method -EQ binstall).archive_only | Should -BeTrue
+                ($legs | Where-Object method -EQ install).archive_only | Should -BeFalse
+            }
+        }
+        finally {
+            Pop-Location
+            $env:GITHUB_OUTPUT = $originalOutput
+        }
+        $script:PublishedJobs | Should -Not -Match 'actions/cache|install-method: path'
+        $script:PublishedJobs | Should -Match '\[guid\]::NewGuid'
+        $script:PublishedJobs | Should -Match 'ref: \$\{\{ github.sha \}\}'
     }
 }

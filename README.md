@@ -4,9 +4,10 @@ Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
 **Release candidate, not a published action release.** `release.json` selects
-action 0.1.0, `cargo-release-plan` 0.5.2 and `cargo-semver-checks` 0.50.0.
-Source checks do not establish that the exact crate and native archives are
-published, or authorize production cutover.
+action 0.1.0, `cargo-release-plan` 0.5.10 and `cargo-semver-checks` 0.50.0,
+with Rust 1.98.1 and cargo-binstall 1.23.0. The selected CRP packages and native
+archives are published; exact-candidate installation acceptance and maintainer
+authorization remain required before releasing this action.
 See [release acceptance](TODO.md) for the remaining gates.
 
 ## Read-only workflow identity proof
@@ -262,13 +263,23 @@ manage their own installation and permission boundaries.
 
 `Published installation` fails while selected packages or promised archives are
 unavailable. Source installation and unit-test fixtures cannot make that check
-pass. Isolated jobs verify published-source installation,
-the default binstall method and every promised native archive without source
-fallback. Full protocol and external-checker acceptance must accompany their
-implementation before release.
+pass. Every manifest target has isolated published-source installation and strict
+archive-only binstall, with executable identity, schema, command and no-upload
+native staging checks. The Linux source-install leg also runs the complete offline
+consumer fixture with the pinned external checker.
 
 Required checks need repository-side enforcement; see [maintainer setup](docs/setup.md).
-Do not publish action tags, merge this candidate or enable consumer
-publishing until its release acceptance obligations are fulfilled.
+An authorized merge to `main` triggers `publish-action.yml`: it repeats fresh
+published installation at that exact commit, then publishes an immutable
+`v<action_version>` tag, a GitHub Release with generated notes and the matching
+major reference (`v0` for this candidate). It preserves GitHub's default Latest
+selection. Equivalent CI/docs-only commits retain the original release identity;
+retries complete missing objects without moving full-version tags or regressing
+a newer major reference.
+
+This action self-publisher is separate from the consumer workspace publisher,
+`release.yml`. Folo's successful production runs provide source-mode pilot evidence;
+maintainer acceptance of that evidence, repository protection and merge
+authorization remain explicit gates. See the [release procedure](docs/setup.md).
 
 Licensed under [MIT](LICENSE).

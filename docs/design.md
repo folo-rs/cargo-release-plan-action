@@ -69,8 +69,28 @@ workflow identity and optional environment, not the reusable workflow's identity
 ## Acceptance boundaries
 
 Read-only identity proofs and source-mode checks do not prove published
-installation or production delivery. Action release requires exact published
-package installation, clean native-archive installation without source fallback,
-and the separately authorized live acceptance pilot. Unavailable pins block that
-gate. This repository does not grant tagging authority, configure Trusted
-Publishers or enable consumer publication.
+installation or production delivery. Action release requires fresh exact
+published-package installation and archive-only binstall on every manifest target,
+plus maintainer acceptance of live consumer pilot evidence. Source-mode production
+evidence remains qualified as such; it does not replace published installation.
+This repository does not configure Trusted Publishers or enable consumer publication.
+
+## Action release lifecycle
+
+The independent action version is published on an authorized main merge.
+`publish-action.yml` repeats published installation at the exact source commit
+before serialized tag/release writes. The reusable `release.yml` continues to
+publish consumer Cargo workspaces and is not the action self-publisher.
+
+Full-version tags are immutable. GitHub Releases use generated notes and default
+Latest selection. The matching major reference advances only to a numerically
+newer version in that major, with a conditional update. Retries reconcile missing
+objects; equivalent documentation/CI-only commits retain the original release
+identity. Conflicting contents or release objects require explicit resolution.
+
+Runtime scripts, action manifests and public/private consumer workflows require
+an independent action increment when their distributed content changes.
+Documentation, tests and owned validation/publication automation do not require
+an increment. One pending increment covers the complete proposed release.
+Pull requests and the stable action, source, published-installation and scheduling
+checks are the main merge gates; administrators configure their enforcement.

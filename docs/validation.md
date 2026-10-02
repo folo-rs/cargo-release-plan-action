@@ -1,11 +1,44 @@
-# Bootstrap acceptance evidence
+# Release acceptance evidence
 
 ## Scope
 
-This evidence verifies exact action-source selection and tool bootstrap. It does
-not establish published installation, registry upload or production delivery.
-The external readiness and setup identity cases below exercise their specific
-live integrations without granting a package-upload success claim.
+Evidence is specific to its action commit, tool version and installation method.
+Source/no-upload and identity proofs do not replace published installation or
+actual delivery. The historical bootstrap cases below retain those boundaries.
+
+## Current release handoff
+
+The selected combination is action 0.1.0, CRP 0.5.10, checker 0.50.0, Rust 1.98.1
+and cargo-binstall 1.23.0. Source acceptance selects the actual released CRP commit
+c87bba72df22124f87a3c858b15e858138c7008b; historical 0.5.2 source evidence does
+not establish this combination's acceptance.
+
+[CRP 0.5.10](https://github.com/folo-rs/folo/releases/tag/cargo-release-plan-v0.5.10)
+has published packages and native ZIP/checksum assets. The candidate's
+Published installation gate executes uncached source installation and strict
+archive-only binstall on every manifest target. Each leg verifies executable,
+schema and native no-upload staging behavior; Linux source installation also
+executes complete offline consumer and external-checker acceptance.
+The existing PR checks, not a pre-registration dispatch, provide first-release
+candidate acceptance. The main self-publisher repeats installation at its exact
+publication commit.
+
+[Folo CRP 0.5.10 production](https://github.com/folo-rs/folo/actions/runs/36984993295)
+at c87bba72df22124f87a3c858b15e858138c7008b and
+[CRP 0.5.2 production](https://github.com/folo-rs/folo/actions/runs/36639518540)
+completed real registry uploads, GitHub reconciliation, native delivery and
+reporting using action 74ad594b51346521821d8b145e312a50f3edfced in source mode.
+[folo-rs/folo#750](https://github.com/folo-rs/folo/pull/750) and
+[folo-rs/folo#800](https://github.com/folo-rs/folo/pull/800) are merged;
+[folo-rs/folo#799](https://github.com/folo-rs/folo/issues/799) is closed.
+These are technical pilot evidence, not maintainer authorization.
+
+Action release-policy unit tests use in-process mocks. Its integration tests use
+real Git trees, a local bare remote and a PowerShell subprocess, without live
+GitHub publication. Required hosted aggregates remain Action validation,
+Source installation, Workflow scheduling and Published installation.
+The [remaining handoff](../TODO.md) retains enforcement, pilot acceptance,
+authorized merge/publication and Folo adoption gates.
 
 ## External readiness and publishing identity
 
@@ -171,14 +204,13 @@ passes the bootstrap and invocation tests on Linux, Windows and macOS, workflow
 syntax checks, and same-revision identity verification.
 
 [Published-installation run 36192209989](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36192209989)
-fails explicitly because the root `release.json` is absent. This is the expected
-release blocker, not a passing installation result. Test fixture pins and source
-canaries cannot satisfy it. Remaining product acceptance is tracked in
-[release acceptance](../TODO.md).
+failed because that historical candidate lacked root `release.json`. It is not
+installation evidence for the selected combination.
 
 With the selected production candidate manifest present,
 [run 36215690642](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/36215690642)
-fails actual installation: Cargo reports that `cargo-release-plan` version
-`=0.4.1` is unavailable from crates.io. This is a publication dependency, not
-source-mode acceptance. Enforcement of the separate check requires the
-repository-side configuration described in [maintainer setup](setup.md).
+failed because `cargo-release-plan =0.4.1` was unavailable at that time.
+Neither historical failure describes current 0.5.10 package availability;
+the selected combination still requires its own passing installation checks.
+Enforcement requires the repository-side configuration in
+[maintainer setup](setup.md).

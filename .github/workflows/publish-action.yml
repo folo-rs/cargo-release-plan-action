@@ -1,0 +1,43 @@
+name: Publish action
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  availability:
+    if: github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/published-installation.yml
+  publish:
+    needs: availability
+    if: github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    # Re-read tags after acquiring the queue; installation proves this run's exact commit.
+    # Ref: docs/implementation.md, "Action version readiness and reconciliation".
+    concurrency:
+      group: action-release-publication
+      cancel-in-progress: false
+      queue: max
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          fetch-depth: 0
+      - name: Reconcile immutable action release and major reference
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./scripts/Release.psm1
+          $workflowEvent = Get-Content $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json -AsHashtable
+          $base = if ($env:GITHUB_EVENT_NAME -eq 'push') {
+              Get-ValidationReleaseBase -EventName push -Ref $env:GITHUB_REF -EventData $workflowEvent
+          }
+          & ./scripts/Publish-Release.ps1 -BaseRef $base

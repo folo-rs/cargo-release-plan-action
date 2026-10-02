@@ -13,7 +13,7 @@ permissions:
 jobs:
   acceptance:
     name: Action validation
-    needs: [identity, tests, workflows]
+    needs: [identity, tests, workflows, version-readiness]
     if: always()
     runs-on: ubuntu-24.04
     steps:
@@ -23,12 +23,27 @@ jobs:
         run: |
           $results = $env:RESULTS | ConvertFrom-Json -AsHashtable
           if (@($results.Values | Where-Object result -NE 'success').Count) {
-              throw 'Action tests, exact identity and workflow validation must all succeed.'
+              throw 'Action tests, exact identity, version readiness and workflow validation must all succeed.'
           }
   identity:
     uses: ./.github/workflows/identity.yml
     with:
       expected-sha: ${{ github.sha }}
+  version-readiness:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Check action version against main and immutable tags
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./scripts/Release.psm1
+          $workflowEvent = Get-Content $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json -AsHashtable
+          $base = Get-ValidationReleaseBase -EventName $env:GITHUB_EVENT_NAME -EventData $workflowEvent -Ref $env:GITHUB_REF
+          & ./scripts/Publish-Release.ps1 -CheckOnly -BaseRef $base
   tests:
     strategy:
       fail-fast: false

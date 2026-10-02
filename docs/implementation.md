@@ -3,8 +3,10 @@
 ## Bootstrap boundary
 
 GitHub-owned orchestration lives in YAML and a small PowerShell bootstrap.
-Release-policy parsing, reconciliation and rendered reports belong in the
+Cargo release-policy parsing, reconciliation and rendered reports belong in the
 `cargo-release-plan` executable rather than in a second shell implementation.
+The action repository's independent tag/release lifecycle uses PowerShell, Git
+and GitHub CLI without invoking Cargo publication.
 
 The composite passes its complete input object to the bootstrap's preparation
 stage. One command-to-input table rejects nondefault command-specific values
@@ -81,8 +83,13 @@ pins or introduce runtime schema conversion.
 The published-source path uses `cargo install --version =<version> --locked`.
 The binstall path installs its exact installer and permits normal archive or
 source fallback into the same isolated `--root`. Published-archive acceptance must separately disable source
-fallback and use a clean root. Unit-test manifest fixtures do not satisfy that
-acceptance gate.
+fallback and use a clean root. The published-installation workflow derives
+both required methods for every target directly from `release.json`. Each leg
+checks native runner identity, uses a unique installation root without executable
+caches, checks executable/schema/command contracts and stages a native batch
+without uploads. The Linux published-source leg additionally installs the external
+checker and runs the complete offline consumer fixture. Unit-test manifest
+fixtures do not satisfy that acceptance gate.
 
 ## Offline invocation
 
@@ -229,3 +236,40 @@ The pinned actionlint predates GitHub's supported `concurrency.queue` property.
 Only its exact unsupported-key diagnostic is excluded. Unit tests assert
 `queue: max` plus noncancellation and a read-only hosted scheduling fixture
 exercises nested queued executions and partial-result artifact routing.
+
+## Action version readiness and reconciliation
+
+`Release.psm1` and `Publish-Release.ps1` implement the independent action release
+boundary, adapted from the MIT-licensed
+[benchmark action publisher](https://github.com/folo-rs/cargo-bench-history-action/tree/bb5159af77ed8827eadee9c20e2d9fc369e4fb95).
+They do not parse Cargo manifests or implement CRP policy.
+
+Action validation compares the candidate's release-bearing Git tree and
+`action_version` with fetched main on pull requests or recovery validation.
+Main pushes use the event's previous main commit. An absent baseline manifest
+permits first publication. A pending feature increment is not compared against
+its own predecessor. Existing full-version tags always constrain contents.
+Runtime scripts, private actions and consumer workflows default to release-bearing;
+only explicitly listed internal CI/publisher files are exempt. In particular,
+consumer `release.yml` is release-bearing and `publish-action.yml` is internal.
+
+The self-publisher runs only for this repository's main push or recovery dispatch.
+Its read-only prerequisite repeats published installation at `github.sha`.
+Only the dependent publication job has `contents: write` and persisted checkout
+credentials. That job serializes through `queue: max` without cancellation,
+refreshes the remote tag set and repeats version/content readiness before writes.
+
+Reconciliation selects an existing equivalent immutable tag's original commit,
+or the tested commit for a new version. It looks up releases with pagination,
+rejects draft/prerelease conflicts, pushes the full tag without force, creates
+missing generated release notes, then conditionally advances the major reference.
+The major comparison is numeric and its force-with-lease uses the tag object
+rather than a peeled commit, including for annotated tags. An older queued run
+cannot regress a newer major pointer. GitHub API failures and failed writes
+remain visible; retries refresh state and complete only missing work.
+
+In-process release tests exercise policy and failure ordering. Integration tests
+use real temporary Git repositories, a local bare remote and process exit
+propagation, mocking only the GitHub API boundary. They cover first publication,
+conflicts, partial retry, CI-only identity retention and out-of-order/leased major
+updates. They do not publish against GitHub.
