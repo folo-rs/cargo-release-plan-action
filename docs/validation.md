@@ -23,6 +23,20 @@ The existing PR checks, not a pre-registration dispatch, provide first-release
 candidate acceptance. The main self-publisher repeats installation at its exact
 publication commit.
 
+The release-bearing candidate at 0d020519689d06300ca941f3661eaaeeaabf60f1
+passes all required hosted aggregates:
+
+| Gate | Exact-candidate evidence |
+| --- | --- |
+| Action validation | [Run 37055075117](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/37055075117): version readiness, workflow syntax, source identity and cross-platform Pester suites. |
+| Source installation | [Run 37055074351](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/37055074351): released source c87bba72df22124f87a3c858b15e858138c7008b on every native target. |
+| Published installation | [Run 37055074352](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/37055074352): every manifest target's published-source and strict archive leg succeeds, including schema and no-upload staging operations. |
+| Workflow scheduling | [Run 37055074801](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/37055074801): queued executions and artifact routing. |
+
+These checks are issued by GitHub Actions application 15368. Documentation-only
+follow-ups still require their own current-head aggregates. No action version
+tag, GitHub Release or main protection is established by these read-only runs.
+
 [Folo CRP 0.5.10 production](https://github.com/folo-rs/folo/actions/runs/36984993295)
 at c87bba72df22124f87a3c858b15e858138c7008b and
 [CRP 0.5.2 production](https://github.com/folo-rs/folo/actions/runs/36639518540)

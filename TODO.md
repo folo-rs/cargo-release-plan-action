@@ -1,7 +1,10 @@
 # Release handoff
 
-- Obtain exact-head acceptance for action 0.1.0 with CRP 0.5.10 across the required
-  checks, including fresh install and archive-only binstall on every native target.
+Candidate implementation acceptance for action 0.1.0 with CRP 0.5.10 is recorded
+in [the evidence record](docs/validation.md), including fresh install and strict
+archive-only binstall on every native target. Keep the final PR head's required
+checks green before seeking merge authorization.
+
 - Have an administrator approve and enforce the main pull-request/check policy
   in [maintainer setup](docs/setup.md). Main currently has no effective protection.
 - Obtain maintainer acceptance of the recorded Folo production runs as pilot
