@@ -3,12 +3,11 @@
 Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
-**Release candidate, not a published action release.** `release.json` selects
+`release.json` selects
 action 0.1.0, `cargo-release-plan` 0.5.10 and `cargo-semver-checks` 0.50.0,
-with Rust 1.98.1 and cargo-binstall 1.23.0. The selected CRP packages and native
-archives are published; exact-candidate installation acceptance and maintainer
-authorization remain required before releasing this action.
-See [release acceptance](TODO.md) for the remaining gates.
+with Rust 1.98.1 and cargo-binstall 1.23.0. Action releases require exact-candidate
+published installation acceptance and maintainer authorization.
+See the [release handoff](TODO.md) for current status and outstanding gates.
 
 ## Read-only workflow identity proof
 
@@ -170,7 +169,7 @@ explicit history is supplied. Captured prepared/plan evidence retains its own
 assessment inputs; Rust enforces the compatible input combinations.
 The action's `version` operation still returns the executable's short version
 line, not schema discovery JSON. Invoke `cargo-release-plan version` directly
-for its workspace-free JSON schema inventory. This candidate uses plan/report/
+for its workspace-free JSON schema inventory. The selected CLI uses plan/report/
 prepared schema 6, decisions/compatibility schema 2 and release-context schema 2;
 the action continues to pin exact tested tool installations.
 
@@ -272,7 +271,7 @@ Required checks need repository-side enforcement; see [maintainer setup](docs/se
 An authorized merge to `main` triggers `publish-action.yml`: it repeats fresh
 published installation at that exact commit, then publishes an immutable
 `v<action_version>` tag, a GitHub Release with generated notes and the matching
-major reference (`v0` for this candidate). It preserves GitHub's default Latest
+major reference (`v0` for action 0.1.0). It preserves GitHub's default Latest
 selection. Equivalent CI/docs-only commits retain the original release identity;
 retries complete missing objects without moving full-version tags or regressing
 a newer major reference.
