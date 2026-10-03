@@ -14,9 +14,9 @@ checks on `main` before merging a releasable candidate:
 
 The workflows report these aggregates for all pull-request file changes,
 including documentation-only changes. Source-mode success does not replace
-Published installation. Up-to-date checks and no bypass are the proposed policy;
-the administrator must explicitly approve it. No approving-review count or merge
-queue is required by this design. The integration does not mutate repository rules.
+Published installation. Up-to-date checks and no bypass are required.
+No approving-review count or merge queue is required by this design.
+The integration does not mutate repository rules.
 
 ## Version selection
 
@@ -44,8 +44,8 @@ identity. Keep one pending increment for the whole candidate.
 2. Obtain the current candidate's required PR checks and inspect every source and
    published installation leg. Rerun failed availability checks when upstream
    publication completes; they do not rerun automatically.
-3. Have the maintainer accept production pilot evidence, approve the main rules
-   policy, enforce its checks and authorize the merge. Merging is authorization
+3. Have the maintainer accept production pilot evidence, confirm enforcement of
+   the main rules policy and authorize the merge. Merging is authorization
    to publish the action, not a nonpublishing staging operation.
 4. Observe `publish-action.yml` repeat installation at the exact merged commit,
    then reconcile `v<action_version>`, a nondraft/non-prerelease GitHub Release
@@ -57,13 +57,9 @@ identity. Keep one pending increment for the whole candidate.
    and its registered calling `release.yml` identity. Its pointer-only adoption
    does not require a Cargo package version increment.
 
-Successful Folo production runs for
-[CRP 0.5.2](https://github.com/folo-rs/folo/actions/runs/36639518540) and
-[CRP 0.5.10](https://github.com/folo-rs/folo/actions/runs/36984993295)
-provide real registry, GitHub, native and report evidence using source-installed
-controllers and action 74ad594b51346521821d8b145e312a50f3edfced.
-Accepting those runs as the preserved consumer behavior's pilot is a maintainer
-decision. No additional live upload or OIDC probe is needed for action publication.
+The [release acceptance evidence](validation.md) records production pilots and
+their installation methods separately from published-installation acceptance.
+No additional live upload or OIDC probe is needed for action publication.
 
 ## Recovery and optional validation
 
