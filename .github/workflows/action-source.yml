@@ -1,0 +1,53 @@
+name: Resolve action source
+
+on:
+  workflow_call:
+    outputs:
+      sha:
+        description: Exact action repository commit selected by this workflow attempt.
+        value: ${{ jobs.resolve.outputs.sha }}
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  resolve:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.source.outputs.sha }}
+    steps:
+      # This bootstrap cannot load an action-owned script before finding its source.
+      # Tests execute this same block; see docs/implementation.md.
+      - name: Resolve the called workflow revision
+        id: source
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # BEGIN SELF-RESOLUTION
+          $ErrorActionPreference = 'Stop'
+          $uri = "$env:GITHUB_API_URL/repos/$env:GITHUB_REPOSITORY/actions/runs/$env:GITHUB_RUN_ID/attempts/$env:GITHUB_RUN_ATTEMPT"
+          $run = Invoke-RestMethod -Uri $uri -Headers @{
+              Authorization = "Bearer $env:GH_TOKEN"
+              Accept = 'application/vnd.github+json'
+              'X-GitHub-Api-Version' = '2022-11-28'
+          }
+          if ($run.id -ne [long]$env:GITHUB_RUN_ID -or $run.run_attempt -ne [int]$env:GITHUB_RUN_ATTEMPT) {
+              throw 'GitHub returned metadata for a different workflow attempt.'
+          }
+          $prefix = 'folo-rs/cargo-release-plan-action/.github/workflows/action-source.yml@'
+          Write-Host ($run.referenced_workflows | ConvertTo-Json -Depth 3)
+          $candidates = @($run.referenced_workflows | Where-Object {
+              $_.path -and $_.path.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase)
+          })
+          if ($candidates.Count -eq 0) {
+              throw 'The current attempt does not identify the called action-source workflow.'
+          }
+          $revisions = @($candidates.sha | Sort-Object -Unique)
+          if ($revisions.Count -ne 1 -or $revisions[0] -cnotmatch '^[0-9a-f]{40}$') {
+              throw 'The current attempt does not identify one exact action-source revision. Use one action revision per run.'
+          }
+          "sha=$($revisions[0])" >> $env:GITHUB_OUTPUT
+          Write-Host "Action source: $($revisions[0]); caller source: $env:GITHUB_SHA; attempt: $env:GITHUB_RUN_ATTEMPT"
+          # END SELF-RESOLUTION

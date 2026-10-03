@@ -1,0 +1,40 @@
+name: Verify action source
+description: Read-only evidence of the exact checked-out action and caller identities.
+inputs:
+  expected-sha:
+    description: Exact expected action commit.
+    required: true
+outputs:
+  sha:
+    description: Checked-out action commit.
+    value: ${{ steps.identity.outputs.sha }}
+runs:
+  using: composite
+  steps:
+    - id: identity
+      shell: pwsh
+      env:
+        IDENTITY_ACTION_PATH: ${{ github.action_path }}
+        EXPECTED_ACTION_SHA: ${{ inputs.expected-sha }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $sha = git -C $env:IDENTITY_ACTION_PATH rev-parse HEAD
+        if ($LASTEXITCODE -ne 0) { throw 'Cannot resolve checked-out action source.' }
+        if ($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) { throw 'Identity proof must not receive OIDC authority.' }
+        "sha=$sha" >> $env:GITHUB_OUTPUT
+        @"
+        ## Read-only action identity
+
+        | Identity | Value |
+        | --- | --- |
+        | Action source | $sha |
+        | Expected action source | $env:EXPECTED_ACTION_SHA |
+        | Caller source | $env:GITHUB_SHA |
+        | Caller repository | $env:GITHUB_REPOSITORY |
+        | Run attempt | $env:GITHUB_RUN_ATTEMPT |
+
+        No OIDC or write permission is requested.
+        "@ >> $env:GITHUB_STEP_SUMMARY
+        if ($sha -cne $env:EXPECTED_ACTION_SHA) {
+            throw "Expected action $env:EXPECTED_ACTION_SHA, checked out $sha."
+        }

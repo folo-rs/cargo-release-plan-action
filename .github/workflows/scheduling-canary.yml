@@ -1,0 +1,41 @@
+name: Workflow scheduling
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_call:
+    inputs:
+      fail-first-attempt:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  queued:
+    strategy:
+      fail-fast: false
+      matrix:
+        lane: [one, two, three]
+    uses: ./.github/workflows/_scheduling-unit.yml
+    concurrency:
+      group: crp-scheduling-${{ github.run_id }}
+      cancel-in-progress: false
+      queue: max
+    with:
+      lane: ${{ matrix.lane }}
+      fail-first-attempt: ${{ inputs.fail-first-attempt || false }}
+  acceptance:
+    name: Workflow scheduling
+    needs: queued
+    if: always()
+    runs-on: ubuntu-24.04
+    steps:
+      - shell: pwsh
+        env:
+          RESULT: ${{ needs.queued.result }}
+        run: |
+          if ($env:RESULT -ne 'success') { throw 'All queued fixture executions must succeed; rerun the deliberate failure proof.' }

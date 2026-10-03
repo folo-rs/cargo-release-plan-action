@@ -1,0 +1,97 @@
+name: Check publishing identity
+
+on:
+  workflow_call:
+    inputs:
+      install-method:
+        type: string
+        default: binstall
+      source-path:
+        type: string
+        default: .
+      publishing-environment:
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  source:
+    uses: ./.github/workflows/action-source.yml
+  controller:
+    needs: source
+    runs-on: ubuntu-24.04
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+      version: ${{ steps.tool.outputs.version }}
+    steps:
+      - name: Require an unprivileged installation job
+        shell: pwsh
+        run: |
+          if ($env:GITHUB_EVENT_NAME -ne 'workflow_dispatch') { throw 'The setup identity probe requires a manual caller invocation.' }
+          if ($env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) { throw 'Controller installation must not receive OIDC authority.' }
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: consumer
+          persist-credentials: false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ needs.source.outputs.sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action
+        id: tool
+        with:
+          command: version
+          install-method: ${{ inputs.install-method }}
+          source-path: consumer/${{ inputs.source-path }}
+          working-directory: consumer
+      - name: Package the verified controller without OIDC
+        shell: pwsh
+        env:
+          CONTROLLER: ${{ steps.tool.outputs.executable }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          tar -cf "$env:RUNNER_TEMP/controller.tar" -C (Split-Path $env:CONTROLLER) (Split-Path $env:CONTROLLER -Leaf)
+          if ($LASTEXITCODE -ne 0) { throw 'Cannot package controller executable.' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        id: upload
+        with:
+          name: crp-identity-controller-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/controller.tar
+          if-no-files-found: error
+  probe:
+    needs: [source, controller]
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.publishing-environment }}
+    permissions:
+      contents: read
+      actions: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          repository: folo-rs/cargo-release-plan-action
+          ref: ${{ needs.source.outputs.sha }}
+          path: .release-plan-action
+          persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/restore-controller
+        id: tool
+        with:
+          artifact-id: ${{ needs.controller.outputs.artifact-id }}
+          version: ${{ needs.controller.outputs.version }}
+      - name: Exchange then immediately revoke the credential
+        shell: pwsh
+        env:
+          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
+          CRP_COMMAND: check-publishing-identity
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (-not $env:ACTIONS_ID_TOKEN_REQUEST_URL -or -not $env:ACTIONS_ID_TOKEN_REQUEST_TOKEN) {
+              throw 'Probe job requires GitHub OIDC authority.'
+          }
+          & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
+          'OIDC exchange and immediate revocation succeeded. No package was uploaded; package-specific grants remain unproven.' >> $env:GITHUB_STEP_SUMMARY
