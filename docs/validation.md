@@ -6,7 +6,7 @@ Evidence is specific to its action commit, tool version and installation method.
 Source/no-upload and identity proofs do not replace published installation or
 actual delivery. The historical bootstrap cases below retain those boundaries.
 
-## Current release handoff
+## Action 0.1.0 release and consumer adoption
 
 The selected combination is action 0.1.0, CRP 0.5.10, checker 0.50.0, Rust 1.98.1
 and cargo-binstall 1.23.0. Source acceptance selects the actual released CRP commit
@@ -45,14 +45,29 @@ reporting using action 74ad594b51346521821d8b145e312a50f3edfced in source mode.
 [folo-rs/folo#750](https://github.com/folo-rs/folo/pull/750) and
 [folo-rs/folo#800](https://github.com/folo-rs/folo/pull/800) are merged;
 [folo-rs/folo#799](https://github.com/folo-rs/folo/issues/799) is closed.
-These are technical pilot evidence, not maintainer authorization.
+The maintainer accepted these source-mode production runs as pilot evidence for
+action 0.1.0; they do not replace published-installation acceptance.
 
 Action release-policy unit tests use in-process mocks. Its integration tests use
 real Git trees, a local bare remote and a PowerShell subprocess, without live
 GitHub publication. Required hosted aggregates remain Action validation,
 Source installation, Workflow scheduling and Published installation.
-The [remaining handoff](../TODO.md) retains enforcement, pilot acceptance,
-authorized merge/publication and Folo adoption gates.
+
+The authorized main [publisher run 37095372560](https://github.com/folo-rs/cargo-release-plan-action/actions/runs/37095372560)
+succeeds on its first attempt at abcdd1b5f94b6c6e409b94a7e32724f22fb42540,
+including fresh published-source and strict archive-only installation on every
+manifest target. The public [v0.1.0 release](https://github.com/folo-rs/cargo-release-plan-action/releases/tag/v0.1.0)
+is nondraft and non-prerelease, with GitHub's default Latest selection.
+Both `v0.1.0` and `v0` point directly to that published action commit.
+
+Folo adoption in [folo-rs/folo#848](https://github.com/folo-rs/folo/pull/848) at
+e08e70d85428fe30df5caa9d804f3033f94ba195 pins every action reference to that
+published commit, retaining path installation and the registered `release.yml`
+identity. Its ordinary [Release run 37099466783](https://github.com/folo-rs/folo/actions/runs/37099466783)
+succeeds on its first attempt at the adoption commit and reports `Release complete`.
+Package versions are unchanged, registry packages are already present, and GitHub
+reconciliation is complete without native batches or new uploads.
+Ongoing release requirements are in the [maintainer release procedure](setup.md).
 
 ## External readiness and publishing identity
 

@@ -7,7 +7,7 @@ from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 action 0.1.0, `cargo-release-plan` 0.5.10 and `cargo-semver-checks` 0.50.0,
 with Rust 1.98.1 and cargo-binstall 1.23.0. Action releases require exact-candidate
 published installation acceptance and maintainer authorization.
-See the [release handoff](TODO.md) for current status and outstanding gates.
+See the [maintainer release procedure](docs/setup.md).
 
 ## Read-only workflow identity proof
 
@@ -277,8 +277,8 @@ retries complete missing objects without moving full-version tags or regressing
 a newer major reference.
 
 This action self-publisher is separate from the consumer workspace publisher,
-`release.yml`. Folo's successful production runs provide source-mode pilot evidence;
-maintainer acceptance of that evidence, repository protection and merge
-authorization remain explicit gates. See the [release procedure](docs/setup.md).
+`release.yml`. Each action release requires accepted consumer pilot evidence,
+repository protection and explicit merge authorization. See the
+[release procedure](docs/setup.md).
 
 Licensed under [MIT](LICENSE).
