@@ -78,7 +78,8 @@ jobs:
           $executable = Install-ReleasePlan -Settings $settings -ArchiveOnly:($env:ARCHIVE_ONLY -eq 'true')
           $identity = (Invoke-BootstrapCommand $executable @('version') | Out-String) | ConvertFrom-Json
           if ($identity.tool_version -cne $settings.Version) { throw 'Schema query identifies a different tool.' }
-          $schemas = @{ plan = 6; report = 6; prepared = 6; decisions = 2; compatibility = 2; release_context = 2 }
+          # Exact selected CLI contract; see docs/setup.md, Version selection.
+          $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 3; release_context = 2 }
           foreach ($schema in $schemas.GetEnumerator()) {
               if ($identity.schemas.($schema.Key) -ne $schema.Value) { throw "Unsupported $($schema.Key) schema." }
           }

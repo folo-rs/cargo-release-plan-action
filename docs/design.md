@@ -42,6 +42,13 @@ for catch-up assessment. The action supplies these identities separately.
 Readiness and compatibility share one context-resolved pair; ancestry
 normalization, stale-target diagnostics and version decisions remain in Rust.
 
+Planning evidence records defining-type origins and procedural-macro target
+identity. Compatibility evidence distinguishes unsupported macro targets from
+missing comparison baselines; unavailable comparisons do not establish a semantic
+floor. Rust owns these decisions. Callers use matching planning schemas, keep
+assessed inputs stable during read-only work and choose output locations separate
+from required inputs. The action forwards paths without converting artifacts.
+
 PR and merge-group targets come directly from their event payloads. Other check
 events do not infer a merge target or treat candidate HEAD as release history.
 Callers may explicitly select a known release-history commit. Merge-queue

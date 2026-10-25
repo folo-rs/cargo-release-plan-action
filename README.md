@@ -4,7 +4,7 @@ Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
 `release.json` selects
-action 0.1.0, `cargo-release-plan` 0.5.10 and `cargo-semver-checks` 0.50.0,
+action 0.2.0, `cargo-release-plan` 0.8.7 and `cargo-semver-checks` 0.50.0,
 with Rust 1.98.1 and cargo-binstall 1.23.0. Action releases require exact-candidate
 published installation acceptance and maintainer authorization.
 See the [maintainer release procedure](docs/setup.md).
@@ -170,8 +170,15 @@ assessment inputs; Rust enforces the compatible input combinations.
 The action's `version` operation still returns the executable's short version
 line, not schema discovery JSON. Invoke `cargo-release-plan version` directly
 for its workspace-free JSON schema inventory. The selected CLI uses plan/report/
-prepared schema 6, decisions/compatibility schema 2 and release-context schema 2;
+prepared schema 8, decisions schema 2, compatibility schema 3 and release-context schema 2;
 the action continues to pin exact tested tool installations.
+
+Planning reports carry defining-type `public_origins` and procedural-macro target
+identity. Compatibility evidence distinguishes `unsupported-proc-macro` from
+`no-baseline`; neither establishes compatibility or replaces semantic review.
+Use a matching version-planning skill and regenerate unsupported planning evidence.
+Keep assessed source, configuration and history stable during read-only operations.
+Callers own output placement and must keep outputs separate from required inputs.
 
 Use the `increment-versions` skill for local version planning. Its decisions use
 `changes[].impact`, numeric plan increments use `increments[].bump` (or an explicit
@@ -271,7 +278,7 @@ Required checks need repository-side enforcement; see [maintainer setup](docs/se
 An authorized merge to `main` triggers `publish-action.yml`: it repeats fresh
 published installation at that exact commit, then publishes an immutable
 `v<action_version>` tag, a GitHub Release with generated notes and the matching
-major reference (`v0` for action 0.1.0). It preserves GitHub's default Latest
+major reference (`v0` for action 0.2.0). It preserves GitHub's default Latest
 selection. Equivalent CI/docs-only commits retain the original release identity;
 retries complete missing objects without moving full-version tags or regressing
 a newer major reference.
