@@ -1,7 +1,9 @@
 #Requires -Version 7.6
 param([Parameter(Mandatory)][string] $Executable)
 
+Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $true
 Import-Module "$PSScriptRoot/../scripts/Bootstrap.psm1" -Force
 Import-Module "$PSScriptRoot/../scripts/Workflow.psm1" -Force
 $fixture = Join-Path $env:RUNNER_TEMP "release-plan-consumer-$([guid]::NewGuid())"
@@ -19,13 +21,14 @@ try {
     if ($identity.tool_version -cne $release.tools.'cargo-release-plan'.version) {
         throw 'Schema query identifies a different executable version.'
     }
-    $schemas = @{ plan = 6; report = 6; prepared = 6; decisions = 2; compatibility = 2; release_context = 2 }
+    # Exact selected CLI contract; see docs/setup.md, Version selection.
+    $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 3; release_context = 2 }
     foreach ($schema in $schemas.GetEnumerator()) {
         if ($identity.schemas.($schema.Key) -ne $schema.Value) {
             throw "Unsupported $($schema.Key) schema in executable identity."
         }
     }
-    Write-Output 'Workspace-free schema query verified plan/report/prepared 6, decisions/compatibility 2 and release-context 2.'
+    Write-Output 'Workspace-free schema query verified the selected CLI contract.'
 
     New-Item (Join-Path $fixture '.cargo') -ItemType Directory -Force | Out-Null
     # A unique unpublished library exercises nonempty registry work without reserving a crate name.
@@ -126,11 +129,14 @@ targets = ["x86_64-unknown-linux-gnu"]
     & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     $stack = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
     $stackReport = Get-Content (Join-Path $env:CRP_OUTPUT 'report.json') -Raw | ConvertFrom-Json
-    if ($stack.schema_version -ne 2 -or -not $stack.completed -or $stack.findings -or $stack.packages.Count -ne 1 -or
+    if ($stack.schema_version -ne $schemas.compatibility -or -not $stack.completed -or $stack.findings -or $stack.packages.Count -ne 1 -or
         -not $stack.packages[0].compared -or $stack.packages[0].baseline_version -cne '0.1.1' -or
         $stack.packages[0].PSObject.Properties.Name -notcontains 'required_impact' -or
-        $stackReport.schema_version -ne 6 -or $stackReport.release_history -cne $history -or
-        $stackReport.merge_target -cne $parent) {
+        $stackReport.schema_version -ne $schemas.report -or $stackReport.release_history -cne $history -or
+        $stackReport.merge_target -cne $parent -or $stackReport.packages.Count -ne 1 -or
+        $stackReport.packages[0].proc_macro -ne $false -or
+        $stackReport.packages[0].PSObject.Properties.Name -notcontains 'public_origins' -or
+        $stackReport.packages[0].public_origins.Count -ne 0) {
         throw 'Stack compatibility did not use the same history and final-parent version as readiness.'
     }
     $env:CRP_COMMAND = 'release-context'
@@ -157,7 +163,7 @@ targets = ["x86_64-unknown-linux-gnu"]
     $env:CRP_OUTPUT = Join-Path $artifacts 'compatibility'
     & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     $compatibility = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
-    if ($compatibility.schema_version -ne 2 -or -not $compatibility.completed -or
+    if ($compatibility.schema_version -ne $schemas.compatibility -or -not $compatibility.completed -or
         $compatibility.findings -or $compatibility.packages.Count) {
         throw 'Unchanged source must produce explicit empty compatibility evidence.'
     }
@@ -165,12 +171,31 @@ targets = ["x86_64-unknown-linux-gnu"]
     $env:CRP_OUTPUT = Join-Path $artifacts 'selected-compatibility'
     & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
     $comparison = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
-    if ($comparison.schema_version -ne 2 -or -not $comparison.completed -or $comparison.checker -notmatch '0\.50\.0' -or
+    if ($comparison.schema_version -ne $schemas.compatibility -or -not $comparison.completed -or $comparison.checker -notmatch '0\.50\.0' -or
         $comparison.packages.Count -ne 1 -or $comparison.packages[0].compared -or
         $comparison.packages[0].PSObject.Properties.Name -notcontains 'required_impact' -or
-        $null -ne $comparison.packages[0].required_impact) {
+        $null -ne $comparison.packages[0].required_impact -or
+        $comparison.packages[0].not_compared_reason -cne 'no-baseline') {
         throw 'Real checker canary must run while an unpublished comparison remains explicitly unavailable.'
     }
+
+    # Unsupported macro targets need explicit exclusion evidence, not a fabricated comparison.
+    $libraryManifest = Get-Content $manifestPath -Raw
+    $libraryManifest.Replace('[lib]', "[lib]`nproc-macro = true") | Set-Content $manifestPath -NoNewline
+    '' | Set-Content (Join-Path $fixture 'lib.rs')
+    $env:CRP_OUTPUT = Join-Path $artifacts 'macro-compatibility'
+    & "$PSScriptRoot/../scripts/Invoke-ReleasePlan.ps1"
+    $macro = Get-Content (Join-Path $env:CRP_OUTPUT 'compatibility.json') -Raw | ConvertFrom-Json
+    $macroReport = Get-Content (Join-Path $env:CRP_OUTPUT 'report.json') -Raw | ConvertFrom-Json
+    if ($macro.schema_version -ne $schemas.compatibility -or -not $macro.completed -or $macro.findings -or
+        $macro.packages.Count -ne 1 -or $macro.packages[0].compared -or
+        $macro.packages[0].not_compared_reason -cne 'unsupported-proc-macro' -or
+        $null -ne $macro.packages[0].baseline_version -or $null -ne $macro.packages[0].required_impact -or
+        $macroReport.schema_version -ne $schemas.report -or $macroReport.packages.Count -ne 1 -or
+        $macroReport.packages[0].proc_macro -ne $true -or $macroReport.packages[0].consumer_contract -ne $true) {
+        throw 'Unsupported macro comparison must preserve public-contract identity and an explicit unavailable reason.'
+    }
+    $libraryManifest | Set-Content $manifestPath -NoNewline
     '' | Set-Content (Join-Path $fixture 'lib.rs')
 
     $env:CRP_COMMAND = 'check'
