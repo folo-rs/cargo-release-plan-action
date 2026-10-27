@@ -22,7 +22,7 @@ The integration does not mutate repository rules.
 
 `release.json` owns the independent `action_version`, exact `tools` versions,
 installation compiler, installer and native target/runner table. The selected
-combination is action 0.2.0, CRP 0.8.7, checker 0.50.0, Rust 1.98.1 and
+combination is action 0.2.1, CRP 0.8.8, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
 60aa1ae663773c116f308b7003a8a466642ae638 from
 [folo-rs/folo#965](https://github.com/folo-rs/folo/pull/965).
@@ -34,11 +34,11 @@ a supported Rust library API. Source-mode controller versions come from source
 metadata, not executable caches or the published CRP pin; its checker is still
 separately pinned.
 
-The independent action minor version accounts for the selected planning and
-compatibility contracts, including defining-type origins and explicit unsupported
-procedural-macro evidence. Context routing and publication artifacts retain their
-existing formats. Consumers use matching planning evidence and keep command inputs
-stable; the action does not convert older artifacts.
+The independent action patch version selects the CRP dependency refresh without
+changing CLI, schema or command contracts. Planning and compatibility contracts
+include defining-type origins and explicit unsupported procedural-macro evidence.
+Consumers use matching planning evidence and keep command inputs stable; the
+action does not convert older artifacts.
 
 Runtime, consumer workflow and pin changes require an action increment.
 Documentation, tests and owned CI-only edits may retain the version and release
@@ -88,7 +88,7 @@ is registered on main. It is not a first-merge bootstrap prerequisite. The same
 validation is already available through the PR checks:
 
 ```powershell
-gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.0
+gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.1
 ```
 
 ## Consumer permissions and environment
