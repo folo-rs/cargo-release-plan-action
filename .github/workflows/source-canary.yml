@@ -37,7 +37,7 @@ jobs:
           repository: folo-rs/folo
           # Match the paired CRP dependency candidate; published-installation acceptance remains separate.
           # Ref: docs/setup.md, "Version selection".
-          ref: 61238cf246a4263e6bc1fabf83d90263fd31957d
+          ref: 3bd6f42e2c30a8a36c4c166a28ef89d350d27d70
           path: .source
           persist-credentials: false
       - uses: ./
