@@ -35,8 +35,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: folo-rs/folo
-          # Exact CRP candidate from folo-rs/folo#966; published-installation acceptance remains separate.
-          ref: adb5405b54ddce7355b8e03e00b30d34bb66b409
+          # Match the paired CRP dependency candidate; published-installation acceptance remains separate.
+          # Ref: docs/setup.md, "Version selection".
+          ref: 8d2b5198167e24f75ed73c2d243420eb56211d4e
           path: .source
           persist-credentials: false
       - uses: ./

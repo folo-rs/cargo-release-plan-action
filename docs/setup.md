@@ -22,10 +22,10 @@ The integration does not mutate repository rules.
 
 `release.json` owns the independent `action_version`, exact `tools` versions,
 installation compiler, installer and native target/runner table. The selected
-combination is action 0.2.1, CRP 0.8.8, checker 0.50.0, Rust 1.98.1 and
+combination is action 0.2.2, CRP 0.8.9, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
-adb5405b54ddce7355b8e03e00b30d34bb66b409 from
-[folo-rs/folo#966](https://github.com/folo-rs/folo/pull/966).
+8d2b5198167e24f75ed73c2d243420eb56211d4e from the
+[paired Folo dependency candidate](https://github.com/folo-rs/folo/commit/8d2b5198167e24f75ed73c2d243420eb56211d4e).
 This source pin does not establish published-package or archive availability.
 
 CRP exposes CLI/artifact contracts: plan/report/prepared schema 8,
@@ -88,7 +88,7 @@ is registered on main. It is not a first-merge bootstrap prerequisite. The same
 validation is already available through the PR checks:
 
 ```powershell
-gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.1
+gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.2
 ```
 
 ## Consumer permissions and environment
