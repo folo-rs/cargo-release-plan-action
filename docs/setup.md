@@ -24,8 +24,8 @@ The integration does not mutate repository rules.
 installation compiler, installer and native target/runner table. The selected
 combination is action 0.2.3, CRP 0.8.10, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
-8d2b5198167e24f75ed73c2d243420eb56211d4e from the
-[paired Folo dependency candidate](https://github.com/folo-rs/folo/commit/8d2b5198167e24f75ed73c2d243420eb56211d4e).
+c1841058db78bd7be1d6e8207e9986c3461474dc from the
+[paired Folo dependency candidate](https://github.com/folo-rs/folo/pull/972).
 This source pin does not establish published-package or archive availability.
 
 CRP exposes CLI/artifact contracts: plan/report/prepared schema 8,
