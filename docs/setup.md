@@ -28,6 +28,9 @@ cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
 [paired Folo dependency candidate](https://github.com/folo-rs/folo/pull/972).
 This source pin does not establish published-package or archive availability.
 
+macOS validation and installation use `macos-latest` to follow GitHub's current
+stable hosted image while retaining native ARM64 target coverage.
+
 CRP exposes CLI/artifact contracts: plan/report/prepared schema 8,
 decisions schema 2, compatibility schema 3 and release-context schema 2. It does not expose
 a supported Rust library API. Source-mode controller versions come from source
