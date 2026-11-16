@@ -24,7 +24,7 @@ The integration does not mutate repository rules.
 installation compiler, installer and native target/runner table. The selected
 combination is action 0.2.3, CRP 0.8.10, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
-c1841058db78bd7be1d6e8207e9986c3461474dc from the
+2f69a49f51f1986db02a1e89839997a2b769645e from the
 [paired Folo dependency candidate](https://github.com/folo-rs/folo/pull/972).
 This source pin does not establish published-package or archive availability.
 
@@ -34,8 +34,10 @@ a supported Rust library API. Source-mode controller versions come from source
 metadata, not executable caches or the published CRP pin; its checker is still
 separately pinned.
 
-The independent action patch version selects the CRP dependency refresh without
-changing CLI, schema or command contracts. Planning and compatibility contracts
+The independent action patch version selects the CRP dependency refresh and
+native source preparation repair without changing CLI, schema or command contracts.
+Native source preparation installs the selected compiler without updating the
+shared Rustup executable. Planning and compatibility contracts
 include defining-type origins and explicit unsupported procedural-macro evidence.
 Consumers use matching planning evidence and keep command inputs stable; the
 action does not convert older artifacts.
