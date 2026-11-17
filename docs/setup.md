@@ -18,6 +18,23 @@ Published installation. Up-to-date checks and no bypass are required.
 No approving-review count or merge queue is required by this design.
 The integration does not mutate repository rules.
 
+The validation and source aggregates warn and exempt only an exact
+`macos-latest` leg cancelled before any steps or runner allocation, when its
+GitHub Actions check annotation says
+`The job was not acquired by Runner of type hosted even after multiple attempts`.
+Authenticated API evidence must match the current run/head and the newest
+unique execution of every expected job across reruns. Missing evidence,
+ordinary cancellations, skipped dependencies and real failures still block.
+The cancelled job itself remains cancelled, not passed.
+
+Published installation permits this exception only on pull requests. Its Linux
+archive leg independently downloads the exact macOS archive using only
+`crate-meta-data`; missing registry packages or archives still block without
+source fallback. Main publication and manual published-installation validation
+continue to require every native execution. Consumer publication and promised
+release artifacts are unchanged. Existing required contexts and protections
+remain in place; no ruleset replacement is necessary.
+
 ## Version selection
 
 `release.json` owns the independent `action_version`, exact `tools` versions,

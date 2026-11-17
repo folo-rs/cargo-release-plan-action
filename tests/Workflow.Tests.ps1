@@ -230,15 +230,9 @@ Describe 'Release history and target routing' {
 
 Describe 'Published installation acceptance' -Tag Integration {
     BeforeAll {
-        $script:OriginalInstallResult = $env:INSTALL
-        $script:OriginalMatrixResult = $env:MATRIX
-        $env:MATRIX = 'success'
         $workflow = Get-Content "$PSScriptRoot/../.github/workflows/published-installation.yml" -Raw
         $script:PublishedJobs = [regex]::Match($workflow, '(?ms)^jobs:\r?\n(.*)$').Groups[1].Value
         $script:PublishedAcceptance = [regex]::Match($script:PublishedJobs, '(?ms)^  acceptance:\r?\n(.*?)(?=^  matrix:)').Groups[1].Value
-        $run = [regex]::Match($script:PublishedAcceptance, '(?s)        run: \|\r?\n(.*)$').Groups[1].Value
-        if (-not $run) { throw 'Published installation acceptance command is missing.' }
-        $script:PublishedVerdict = [scriptblock]::Create($run)
     }
 
     Describe 'Action self-publication workflow boundaries' -Tag Integration {
@@ -281,40 +275,14 @@ Describe 'Published installation acceptance' -Tag Integration {
         }
     }
 
-    AfterAll {
-        $env:INSTALL = $script:OriginalInstallResult
-        $env:MATRIX = $script:OriginalMatrixResult
-    }
-
     It 'keeps the named required gate dependent on the complete install matrix' {
         $jobs = @([regex]::Matches($script:PublishedJobs, '(?m)^  ([a-z-]+):\r?$') | ForEach-Object { $_.Groups[1].Value })
         $jobs | Should -Be @('acceptance', 'matrix', 'install')
         $script:PublishedAcceptance | Should -Match '(?m)^    name: Published installation\r?$'
         $script:PublishedAcceptance | Should -Match '(?m)^    needs: \[matrix, install\]\r?$'
         $script:PublishedAcceptance | Should -Match '(?m)^    if: always\(\)\r?$'
-        $script:PublishedAcceptance | Should -Match ([regex]::Escape('INSTALL: ${{ needs.install.result }}'))
-    }
-
-    It 'accepts a successful matrix result' {
-        $env:INSTALL = 'success'
-        { & $script:PublishedVerdict } | Should -Not -Throw
-    }
-
-    It 'rejects a matrix result of <Result>' -ForEach @(
-        @{ Result = 'failure' }
-        @{ Result = 'cancelled' }
-        @{ Result = 'skipped' }
-        @{ Result = '' }
-    ) {
-        $env:INSTALL = $Result
-        { & $script:PublishedVerdict } | Should -Throw '*installation are required*'
-    }
-
-    It 'rejects missing matrix generation even if installations report success' {
-        $env:INSTALL = 'success'
-        $env:MATRIX = 'failure'
-        try { { & $script:PublishedVerdict } | Should -Throw '*installation are required*' }
-        finally { $env:MATRIX = 'success' }
+        $script:PublishedAcceptance | Should -Match 'Assert-WorkflowGate -Profile published'
+        $script:PublishedAcceptance | Should -Match ([regex]::Escape('GH_TOKEN: ${{ github.token }}'))
     }
 
     It 'generates fresh source and strict archive legs for every declared target' {
@@ -344,5 +312,7 @@ Describe 'Published installation acceptance' -Tag Integration {
         $script:PublishedJobs | Should -Not -Match 'actions/cache|install-method: path'
         $script:PublishedJobs | Should -Match '\[guid\]::NewGuid'
         $script:PublishedJobs | Should -Match 'ref: \$\{\{ github.sha \}\}'
+        $script:PublishedJobs | Should -Match "'--target', 'aarch64-apple-darwin', '--strategies', 'crate-meta-data'"
+        $script:PublishedJobs | Should -Match "The exact published macOS archive did not supply its executable"
     }
 }

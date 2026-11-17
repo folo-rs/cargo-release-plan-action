@@ -8,6 +8,8 @@ on:
 
 permissions:
   contents: read
+  actions: read
+  checks: read
 
 jobs:
   acceptance:
@@ -16,14 +18,16 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - shell: pwsh
         env:
-          INSTALL: ${{ needs.install.result }}
-          MATRIX: ${{ needs.matrix.result }}
+          GH_TOKEN: ${{ github.token }}
         run: |
-          if ($env:MATRIX -ne 'success' -or $env:INSTALL -ne 'success') {
-              throw 'Exact published package, native archive and external-checker installation are required.'
-          }
+          Import-Module ./.github/scripts/WorkflowGate.psm1
+          $eventData = Get-Content $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json -AsHashtable
+          Assert-WorkflowGate -Profile published -EventData $eventData -EventName $env:GITHUB_EVENT_NAME -Repository $env:GITHUB_REPOSITORY -RunId $env:GITHUB_RUN_ID -Attempt $env:GITHUB_RUN_ATTEMPT -Sha $env:GITHUB_SHA
   matrix:
     runs-on: ubuntu-latest
     outputs:
@@ -121,3 +125,17 @@ jobs:
               & ./tests/Invoke-OfflineCanary.ps1 -Executable $executable
           }
           & ./tests/Invoke-BinaryCanary.ps1 -Executable $executable
+          if ($env:INSTALL_METHOD -eq 'binstall' -and $env:EXPECTED_TARGET -eq 'x86_64-unknown-linux-gnu') {
+              # Independently acquire the macOS archive even when its native runner never starts.
+              $installer = Join-Path $settings.Root 'installer/bin/cargo-binstall'
+              $archiveRoot = Join-Path $root 'macos-archive'
+              $originalToolchain = $env:RUSTUP_TOOLCHAIN
+              try {
+                  $env:RUSTUP_TOOLCHAIN = $settings.Toolchain
+                  Invoke-BootstrapCommand $installer @('cargo-release-plan', '--version', "=$($settings.Version)", '--locked', '--no-confirm', '--root', $archiveRoot, '--no-track', '--target', 'aarch64-apple-darwin', '--strategies', 'crate-meta-data')
+                  if (-not (Test-Path (Join-Path $archiveRoot 'bin/cargo-release-plan') -PathType Leaf)) {
+                      throw 'The exact published macOS archive did not supply its executable.'
+                  }
+              }
+              finally { $env:RUSTUP_TOOLCHAIN = $originalToolchain }
+          }
