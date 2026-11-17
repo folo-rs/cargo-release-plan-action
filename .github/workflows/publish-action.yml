@@ -15,7 +15,7 @@ jobs:
   publish:
     needs: availability
     if: github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
     # Re-read tags after acquiring the queue; installation proves this run's exact commit.

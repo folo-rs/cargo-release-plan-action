@@ -15,7 +15,7 @@ jobs:
     name: Action validation
     needs: [identity, tests, workflows, version-readiness]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - shell: pwsh
         env:
@@ -30,7 +30,7 @@ jobs:
     with:
       expected-sha: ${{ github.sha }}
   version-readiness:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -48,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, windows-2025, macos-latest]
+        runner: [ubuntu-latest, windows-latest, macos-latest]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -65,7 +65,7 @@ jobs:
           Import-Module Pester -RequiredVersion 5.7.1
           Invoke-Pester -Path tests -CI -Output Detailed
   workflows:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:

@@ -43,7 +43,7 @@ permissions:
 
 jobs:
   prepare:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -90,7 +90,7 @@ jobs:
           if-no-files-found: error
   registry:
     needs: prepare
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment: ${{ inputs.publishing-environment }}
     permissions:
       contents: read
@@ -139,7 +139,7 @@ jobs:
           if-no-files-found: warn
   github:
     needs: registry
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: write
       actions: read
@@ -274,7 +274,7 @@ jobs:
   report:
     needs: [prepare, registry, github, binaries]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: read

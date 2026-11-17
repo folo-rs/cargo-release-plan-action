@@ -32,7 +32,7 @@ jobs:
     uses: ./.github/workflows/action-source.yml
   context:
     needs: source
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       source: ${{ steps.context.outputs.source }}
       scope: ${{ steps.context.outputs.scope }}
