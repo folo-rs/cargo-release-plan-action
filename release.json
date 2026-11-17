@@ -1,10 +1,10 @@
 {
   "schema_version": 1,
-  "action_version": "0.2.2",
+  "action_version": "0.2.3",
   "install_toolchain": "1.98.1",
   "cargo_binstall_version": "1.23.0",
   "tools": {
-    "cargo-release-plan": { "version": "0.8.9" },
+    "cargo-release-plan": { "version": "0.8.10" },
     "cargo-semver-checks": { "version": "0.50.0" }
   },
   "platforms": [
@@ -12,6 +12,6 @@
     { "target": "aarch64-unknown-linux-gnu", "runner": "ubuntu-24.04-arm", "os": "Linux", "arch": "ARM64" },
     { "target": "x86_64-pc-windows-msvc", "runner": "windows-2025", "os": "Windows", "arch": "X64" },
     { "target": "aarch64-pc-windows-msvc", "runner": "windows-11-arm", "os": "Windows", "arch": "ARM64" },
-    { "target": "aarch64-apple-darwin", "runner": "macos-15", "os": "macOS", "arch": "ARM64" }
+    { "target": "aarch64-apple-darwin", "runner": "macos-latest", "os": "macOS", "arch": "ARM64" }
   ]
 }

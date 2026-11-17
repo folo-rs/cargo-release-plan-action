@@ -4,7 +4,7 @@ Reusable GitHub integration for `cargo-release-plan`, distributed independently
 from the Rust application in [folo-rs/folo](https://github.com/folo-rs/folo).
 
 `release.json` selects
-action 0.2.2, `cargo-release-plan` 0.8.9 and `cargo-semver-checks` 0.50.0,
+action 0.2.3, `cargo-release-plan` 0.8.10 and `cargo-semver-checks` 0.50.0,
 with Rust 1.98.1 and cargo-binstall 1.23.0. Action releases require exact-candidate
 published installation acceptance and maintainer authorization.
 See the [maintainer release procedure](docs/setup.md).

@@ -22,11 +22,14 @@ The integration does not mutate repository rules.
 
 `release.json` owns the independent `action_version`, exact `tools` versions,
 installation compiler, installer and native target/runner table. The selected
-combination is action 0.2.2, CRP 0.8.9, checker 0.50.0, Rust 1.98.1 and
+combination is action 0.2.3, CRP 0.8.10, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
-8d2b5198167e24f75ed73c2d243420eb56211d4e from the
-[paired Folo dependency candidate](https://github.com/folo-rs/folo/commit/8d2b5198167e24f75ed73c2d243420eb56211d4e).
+2f69a49f51f1986db02a1e89839997a2b769645e from the
+[paired Folo dependency candidate](https://github.com/folo-rs/folo/pull/972).
 This source pin does not establish published-package or archive availability.
+
+macOS validation and installation use `macos-latest` to follow GitHub's current
+stable hosted image while retaining native ARM64 target coverage.
 
 CRP exposes CLI/artifact contracts: plan/report/prepared schema 8,
 decisions schema 2, compatibility schema 3 and release-context schema 2. It does not expose
@@ -34,8 +37,10 @@ a supported Rust library API. Source-mode controller versions come from source
 metadata, not executable caches or the published CRP pin; its checker is still
 separately pinned.
 
-The independent action patch version selects the CRP dependency refresh without
-changing CLI, schema or command contracts. Planning and compatibility contracts
+The independent action patch version selects the CRP dependency refresh and
+native source preparation repair without changing CLI, schema or command contracts.
+Native source preparation installs the selected compiler without updating the
+shared Rustup executable. Planning and compatibility contracts
 include defining-type origins and explicit unsupported procedural-macro evidence.
 Consumers use matching planning evidence and keep command inputs stable; the
 action does not convert older artifacts.
@@ -88,7 +93,7 @@ is registered on main. It is not a first-merge bootstrap prerequisite. The same
 validation is already available through the PR checks:
 
 ```powershell
-gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.2
+gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.3
 ```
 
 ## Consumer permissions and environment
