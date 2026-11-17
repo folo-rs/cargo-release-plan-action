@@ -22,7 +22,7 @@ permissions:
 
 jobs:
   rerun-prerequisite:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       # Failing before source makes failed-job reruns execute resolution again.
       - name: Exercise failed-job reruns
@@ -38,7 +38,7 @@ jobs:
     uses: ./.github/workflows/action-source.yml
   verify:
     needs: source
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       sha: ${{ steps.identity.outputs.sha }}
     steps:

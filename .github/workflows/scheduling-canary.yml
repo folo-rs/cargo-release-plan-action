@@ -32,7 +32,7 @@ jobs:
     name: Workflow scheduling
     needs: queued
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - shell: pwsh
         env:

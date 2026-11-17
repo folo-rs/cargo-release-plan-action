@@ -14,7 +14,7 @@ jobs:
     name: Published installation
     needs: [matrix, install]
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - shell: pwsh
         env:
@@ -25,7 +25,7 @@ jobs:
               throw 'Exact published package, native archive and external-checker installation are required.'
           }
   matrix:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       legs: ${{ steps.matrix.outputs.legs }}
     steps:

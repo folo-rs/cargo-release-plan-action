@@ -73,6 +73,24 @@ Describe 'Workflow artifact routing' {
 }
 
 Describe 'Release graph invariants' {
+    It 'keeps source canary runners and Linux-only exercises aligned with native release routing' {
+        $release = Get-Content "$PSScriptRoot/../release.json" -Raw | ConvertFrom-Json
+        $fixture = Get-Content "$PSScriptRoot/fixtures/release.json" -Raw | ConvertFrom-Json
+        $source = Get-Content "$PSScriptRoot/../.github/workflows/source-canary.yml" -Raw
+        $runners = [regex]::Match($source, '(?m)^\s+runner: \[([^\]]+)\]').Groups[1].Value -split ',\s*'
+        @($runners | Sort-Object) | Should -Be @($release.platforms.runner | Sort-Object)
+        @($fixture.platforms.runner | Sort-Object) | Should -Be @($release.platforms.runner | Sort-Object)
+
+        # A stale image-label condition silently skips transfer and checker acceptance.
+        $linux = @($release.platforms | Where-Object { $_.os -eq 'Linux' -and $_.arch -eq 'X64' })
+        $linux.Count | Should -Be 1
+        $conditions = [regex]::Matches($source, "if: matrix.runner == '([^']+)'")
+        $conditions.Count | Should -BeGreaterThan 0
+        foreach ($condition in $conditions) {
+            $condition.Groups[1].Value | Should -Be $linux[0].runner
+        }
+    }
+
     It 'holds one noncancelling queue:max lock around the complete nested workflow' {
         $workflow = Get-Content "$PSScriptRoot/../.github/workflows/release.yml" -Raw
         $workflow | Should -Match 'uses: \./\.github/workflows/_release.yml'

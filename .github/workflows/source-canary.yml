@@ -15,7 +15,7 @@ jobs:
     name: Source installation
     needs: install
     if: always()
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - shell: pwsh
         env:
@@ -26,7 +26,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm, windows-2025, windows-11-arm, macos-latest]
+        # Latest images follow hosted updates; ARM64 keeps architecture-specific labels.
+        # Ref: docs/setup.md, "Version selection".
+        runner: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-latest]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -90,7 +92,7 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw "Missing publish $phase." }
           }
       - name: Package controller transfer canary
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-latest'
         shell: pwsh
         env:
           CONTROLLER: ${{ steps.tool.outputs.executable }}
@@ -98,25 +100,25 @@ jobs:
           tar -cf "$env:RUNNER_TEMP/controller.tar" -C (Split-Path $env:CONTROLLER) (Split-Path $env:CONTROLLER -Leaf)
           if ($LASTEXITCODE -ne 0) { throw 'Controller canary packaging failed.' }
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-latest'
         id: controller
         with:
           name: crp-controller-canary-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/controller.tar
           if-no-files-found: error
       - uses: ./.github/actions/restore-controller
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-latest'
         with:
           artifact-id: ${{ steps.controller.outputs.artifact-id }}
           version: ${{ steps.tool.outputs.version }}
       - name: Install the pinned external compatibility checker
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-latest'
         uses: ./.github/actions/install-checker
         with:
           install-method: path
           source-path: .source
       - name: Exercise read-only consumer operations
-        if: matrix.runner == 'ubuntu-24.04'
+        if: matrix.runner == 'ubuntu-latest'
         shell: pwsh
         env:
           CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}

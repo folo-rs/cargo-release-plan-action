@@ -69,6 +69,9 @@ dry-run is not completion, and a failed invocation can retain a partial outcome.
 Missing outcomes are not interchangeable with valid empty work.
 
 Native targets are x86_64 and aarch64 Linux and Windows, plus aarch64 macOS.
+Hosted runners follow latest stable image aliases where the alias preserves the
+target architecture. Linux and Windows ARM64 use architecture-specific labels
+until matching latest aliases exist.
 Release runs use non-cancelling `queue: max` serialization and matrix fail-fast is
 disabled. Trusted Publishing registers the consumer's calling `release.yml`
 workflow identity and optional environment, not the reusable workflow's identity.

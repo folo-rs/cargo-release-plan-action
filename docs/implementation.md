@@ -65,6 +65,14 @@ restore keys. Cache hits still verify the selected executable's exact version.
 The release manifest carries `schema_version`, independent `action_version`,
 `install_toolchain`, `cargo_binstall_version` and exact versions under `tools`.
 
+The platform table uses latest hosted image aliases where they preserve native
+architecture, with architecture-specific Linux and Windows ARM64 exceptions.
+Consumer native routing and published-installation matrices read this table.
+The source canary mirrors its runners and keeps controller transfer and external
+checker exercises on the Linux x64 leg. Installation selects targets from runner
+OS/architecture, and published acceptance rejects a mismatched native target;
+neither selection depends on an OS image version.
+
 Source mode uses a distinct installation root and never invokes the executable
 cache. Cargo metadata supplies the selected package version for executable
 verification, and `cargo install --path --locked --force` rebuilds from the

@@ -22,7 +22,7 @@ jobs:
     uses: ./.github/workflows/action-source.yml
   controller:
     needs: source
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     outputs:
       artifact-id: ${{ steps.upload.outputs.artifact-id }}
       version: ${{ steps.tool.outputs.version }}
@@ -65,7 +65,7 @@ jobs:
           if-no-files-found: error
   probe:
     needs: [source, controller]
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     environment: ${{ inputs.publishing-environment }}
     permissions:
       contents: read
