@@ -18,22 +18,59 @@ Published installation. Up-to-date checks and no bypass are required.
 No approving-review count or merge queue is required by this design.
 The integration does not mutate repository rules.
 
-The validation and source aggregates warn and exempt only an exact
-`macos-latest` leg cancelled before any steps or runner allocation, when its
-GitHub Actions check annotation says
-`The job was not acquired by Runner of type hosted even after multiple attempts`.
-Authenticated API evidence must match the current run/head and the newest
-unique execution of every expected job across reruns. Missing evidence,
-ordinary cancellations, skipped dependencies and real failures still block.
-The cancelled job itself remains cancelled, not passed.
+### How hosted macOS capacity failures are detected
+
+[WorkflowGate.psm1](../.github/scripts/WorkflowGate.psm1) detects capacity failure
+from **authenticated GitHub check-run annotations**, not job logs or a
+queued/cancelled status. Using the workflow token with `actions: read` and
+`checks: read`, it follows the job's `check_run_url` only within the current
+repository's API, reads `GET /repos/{owner}/{repo}/check-runs/{check_run_id}`,
+then paginates
+`GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations`.
+At least one annotation must have level `failure` and this **exact,
+case-sensitive** message (no trailing period):
+
+```text
+The job was not acquired by Runner of type hosted even after multiple attempts
+```
+
+The only permitted accompanying annotation has level `notice` and this exact,
+case-sensitive message; it may appear more than once:
+
+```text
+Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.
+```
+
+**The notice alone is insufficient.** Any other annotation, unreadable evidence,
+or mismatch between the fetched annotations and `output.annotations_count`
+blocks the exception. Annotation text is compared as data, never executed.
+
+The gate also requires all of the following:
+
+- The authenticated run matches the current repository, run ID, head SHA, event
+  and attempt. It paginates `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs?filter=all`
+  and selects the unique newest execution of each exact expected job name across
+  attempts, retaining older successful jobs only when they were not rerun.
+- The candidate is an explicitly allowlisted macOS leg, with labels exactly
+  `["macos-latest"]`, status `completed`, conclusion `cancelled`, a present and
+  empty `steps` array, and no allocated runner (`runner_id` zero/null and
+  `runner_name` empty/null).
+- Its check has the same job name and head SHA, belongs to the run's check suite,
+  is owned by GitHub Actions (app ID `15368`, slug `github-actions`), and is also
+  `completed`/`cancelled`. The gate rechecks run identity after reconciliation.
+
+Queued status can mean a job is still waiting; cancellation can be user-requested
+or unrelated to capacity. Neither proves acquisition failure. Missing, unknown
+or contradictory evidence, skipped dependencies, non-macOS failures and real
+executed-step failures remain blocking. A proven exception emits an explicit
+warning naming the job, ID and attempt; the raw job remains cancelled, not passed.
 
 Published installation permits this exception only on pull requests. Its Linux
 archive leg independently downloads the exact macOS archive using only
 `crate-meta-data`; missing registry packages or archives still block without
 source fallback. Main publication and manual published-installation validation
 continue to require every native execution. Consumer publication and promised
-release artifacts are unchanged. Existing required contexts and protections
-remain in place; no ruleset replacement is necessary.
+release artifacts are unchanged.
 
 ## Version selection
 
