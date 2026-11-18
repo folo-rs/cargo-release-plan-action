@@ -8,8 +8,8 @@ checks on `main` before merging a releasable candidate:
 | Required check | Obligation |
 | --- | --- |
 | Action validation | Bootstrap/invocation and release tests, action version readiness, exact-source identity and workflow syntax. |
-| Source installation | Source installation and real read-only/no-upload operations on every promised native target. |
-| Published installation | Fresh exact published-source and archive-only installation on every manifest target, with external-checker acceptance. |
+| Source installation | Linux/Windows source installation and real read-only/no-upload operations. |
+| Published installation | Fresh exact Linux/Windows published-source and archive-only installation, external-checker acceptance, and independent macOS archive acquisition. |
 | Workflow scheduling | Hosted queue and artifact-routing semantics. |
 
 The workflows report these aggregates for all pull-request file changes,
@@ -17,6 +17,28 @@ including documentation-only changes. Source-mode success does not replace
 Published installation. Up-to-date checks and no bypass are required.
 No approving-review count or merge queue is required by this design.
 The integration does not mutate repository rules.
+
+### Advisory macOS validation
+
+Hosted macOS ARM64 runners are unreliable on capacity grounds, so macOS
+**validation is always advisory**, without a capacity detector.
+[`macos-advisory.yml`](../.github/workflows/macos-advisory.yml) independently runs
+the tests, source installation and both published-installation methods on
+`macos-latest`. No required aggregate or candidate-validation call depends on
+that workflow: **merging need not wait for queued macOS jobs**, and missing,
+cancelled or failed macOS validation does not block the merge. Actual outcomes
+remain visible; they are not converted to successes with `continue-on-error`.
+
+**Agents must keep macOS checks green and investigate/fix observed regressions.**
+Advisory status is a capacity workaround, not permission to drop macOS support
+or ignore a known bug.
+
+Non-macOS checks remain required. The required Linux archive leg independently
+downloads the exact promised macOS archive using only `crate-meta-data`, without
+source fallback; missing packages or archives still block. Action publication
+is stricter than merging: `publish-action.yml` explicitly waits for successful
+native macOS `install` and `binstall` as well as the non-macOS availability gate.
+Consumer publication and promised native artifact production are unchanged.
 
 ## Version selection
 
@@ -58,8 +80,9 @@ identity. Keep one pending increment for the whole candidate.
 1. Select exact versions and matching source canaries. The tool owner must publish
    the selected packages and native archives first; metadata availability alone
    is not action installation acceptance.
-2. Obtain the current candidate's required PR checks and inspect every source and
-   published installation leg. Rerun failed availability checks when upstream
+2. Obtain the current candidate's required PR checks. Inspect available macOS
+   advisory results and fix observed regressions, but do not wait for queued
+   macOS validation. Rerun failed required availability checks when upstream
    publication completes; they do not rerun automatically.
 3. Have the maintainer accept production pilot evidence, confirm enforcement of
    the main rules policy and authorize the merge. Merging is authorization

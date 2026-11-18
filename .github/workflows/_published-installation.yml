@@ -1,0 +1,99 @@
+name: Native published installation
+
+on:
+  workflow_call:
+    inputs:
+      runner:
+        type: string
+        required: true
+      target:
+        type: string
+        required: true
+      method:
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  install:
+    runs-on: ${{ inputs.runner }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Install published tool without executable caches
+        shell: pwsh
+        env:
+          INSTALL_METHOD: ${{ inputs.method }}
+          ARCHIVE_ONLY: ${{ inputs.method == 'binstall' }}
+          EXPECTED_TARGET: ${{ inputs.target }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Import-Module ./scripts/Bootstrap.psm1
+          $root = Join-Path $env:RUNNER_TEMP ([guid]::NewGuid().ToString())
+          $settings = Get-InstallationSettings -ActionPath $env:GITHUB_WORKSPACE -Method $env:INSTALL_METHOD -SourcePath . -TemporaryDirectory $root -RunnerOS $env:RUNNER_OS -RunnerArch $env:RUNNER_ARCH
+          if ($settings.Target -cne $env:EXPECTED_TARGET) { throw 'Runner does not match its manifest target.' }
+          $executable = Install-ReleasePlan -Settings $settings -ArchiveOnly:($env:ARCHIVE_ONLY -eq 'true')
+          $identity = (Invoke-BootstrapCommand $executable @('version') | Out-String) | ConvertFrom-Json
+          if ($identity.tool_version -cne $settings.Version) { throw 'Schema query identifies a different tool.' }
+          # Exact selected CLI contract; see docs/setup.md, Version selection.
+          $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 3; release_context = 2 }
+          foreach ($schema in $schemas.GetEnumerator()) {
+              if ($identity.schemas.($schema.Key) -ne $schema.Value) { throw "Unsupported $($schema.Key) schema." }
+          }
+          $help = & $executable check --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed tool check help failed.' }
+          foreach ($flag in @('--manifest-path', '--release-history', '--merge-target', '--format', '--config')) {
+              if (-not $help.Contains($flag)) { throw "Installed tool does not expose $flag." }
+          }
+          $help = & $executable prepare-publish --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed preparation help failed.' }
+          foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
+              if (-not $help.Contains($flag)) { throw "Installed preparation does not expose $flag." }
+          }
+          $help = & $executable publish registry --help | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Installed registry help failed.' }
+          foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
+              if (-not $help.Contains($flag)) { throw "Installed registry operation does not expose $flag." }
+          }
+          $operations = @(
+              @{ args = @('release-context'); flags = @('--manifest-path', '--config', '--release-history', '--merge-target') },
+              @{ args = @('check-compatibility'); flags = @('--output', '--manifest-path', '--prepared', '--plan', '--release-history', '--merge-target', '--deny-findings') },
+              @{ args = @('check-published'); flags = @('--manifest-path', '--plan') },
+              @{ args = @('check-publishing-identity'); flags = @('--verbose') },
+              @{ args = @('publish', 'github'); flags = @('--publication', '--manifest-path', '--output', '--batches', '--dry-run') },
+              @{ args = @('publish', 'binaries'); flags = @('--publication', '--manifest-path', '--batch', '--output', '--artifacts', '--no-upload') },
+              @{ args = @('publish', 'report'); flags = @('--publication', '--repository', '--outcomes', '--jobs', '--output', '--no-issue') }
+          )
+          foreach ($operation in $operations) {
+              $arguments = $operation.args + @('--help')
+              $help = & $executable @arguments | Out-String
+              if ($LASTEXITCODE -ne 0) { throw "Installed operation is unavailable: $($operation.args -join ' ')." }
+              foreach ($flag in $operation.flags) {
+                  if (-not $help.Contains($flag)) { throw "Installed operation lacks $flag." }
+              }
+          }
+          if ($env:INSTALL_METHOD -eq 'install' -and $env:EXPECTED_TARGET -eq 'x86_64-unknown-linux-gnu') {
+              $checker = Install-CompatibilityChecker -ActionPath $env:GITHUB_WORKSPACE -Settings $settings
+              $env:PATH = (Split-Path $checker) + [IO.Path]::PathSeparator + $env:PATH
+              & ./tests/Invoke-OfflineCanary.ps1 -Executable $executable
+          }
+          & ./tests/Invoke-BinaryCanary.ps1 -Executable $executable
+          if ($env:INSTALL_METHOD -eq 'binstall' -and $env:EXPECTED_TARGET -eq 'x86_64-unknown-linux-gnu') {
+              # Independently acquire the macOS archive even when its native runner never starts.
+              $installer = Join-Path $settings.Root 'installer/bin/cargo-binstall'
+              $archiveRoot = Join-Path $root 'macos-archive'
+              $originalToolchain = $env:RUSTUP_TOOLCHAIN
+              try {
+                  $env:RUSTUP_TOOLCHAIN = $settings.Toolchain
+                  Invoke-BootstrapCommand $installer @('cargo-release-plan', '--version', "=$($settings.Version)", '--locked', '--no-confirm', '--root', $archiveRoot, '--no-track', '--target', 'aarch64-apple-darwin', '--strategies', 'crate-meta-data')
+                  if (-not (Test-Path (Join-Path $archiveRoot 'bin/cargo-release-plan') -PathType Leaf)) {
+                      throw 'The exact published macOS archive did not supply its executable.'
+                  }
+              }
+              finally { $env:RUSTUP_TOOLCHAIN = $originalToolchain }
+          }

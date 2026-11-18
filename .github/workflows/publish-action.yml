@@ -12,8 +12,19 @@ jobs:
   availability:
     if: github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'
     uses: ./.github/workflows/published-installation.yml
+  availability-macos:
+    if: github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [install, binstall]
+    uses: ./.github/workflows/_published-installation.yml
+    with:
+      runner: macos-latest
+      target: aarch64-apple-darwin
+      method: ${{ matrix.method }}
   publish:
-    needs: availability
+    needs: [availability, availability-macos]
     if: github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     permissions:

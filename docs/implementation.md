@@ -94,13 +94,21 @@ pins or introduce runtime schema conversion.
 The published-source path uses `cargo install --version =<version> --locked`.
 The binstall path installs its exact installer and permits normal archive or
 source fallback into the same isolated `--root`. Published-archive acceptance must separately disable source
-fallback and use a clean root. The published-installation workflow derives
-both required methods for every target directly from `release.json`. Each leg
+fallback and use a clean root. The required published-installation workflow derives
+both methods for every non-macOS target directly from `release.json`. Each leg
 checks native runner identity, uses a unique installation root without executable
 caches, checks executable/schema/command contracts and stages a native batch
 without uploads. The Linux published-source leg additionally installs the external
 checker and runs the complete offline consumer fixture. Unit-test manifest
 fixtures do not satisfy that acceptance gate.
+
+The standalone `macos-advisory.yml` runs macOS tests and calls the same native
+source/published installation helpers as the required Linux/Windows workflows.
+No required aggregate depends on the macOS workflow, so queued macOS validation
+does not delay those gates. The Linux archive leg independently downloads the
+exact macOS archive with `crate-meta-data` only. `publish-action.yml` separately
+requires native macOS installation before publication. See the
+[advisory policy](setup.md#advisory-macos-validation) for agent expectations.
 
 ## Offline invocation
 

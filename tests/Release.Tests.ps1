@@ -21,7 +21,9 @@ Describe 'Release-bearing paths' {
         '.github/workflows/validate.yml', '.github/workflows/validate-release.yml',
         '.github/workflows/published-installation.yml', '.github/workflows/source-canary.yml',
         '.github/workflows/scheduling-canary.yml', '.github/workflows/_scheduling-unit.yml',
-        '.github/workflows/publish-action.yml', 'scripts/Release.psm1', 'scripts/Publish-Release.ps1'
+        '.github/workflows/publish-action.yml', '.github/workflows/macos-advisory.yml',
+        '.github/workflows/_source-installation.yml', '.github/workflows/_published-installation.yml',
+        'scripts/Release.psm1', 'scripts/Publish-Release.ps1'
     ) {
         Test-ReleaseBearingPath $_ | Should -BeFalse
     }

@@ -35,7 +35,11 @@ actionlint -ignore '^unexpected key "queue" for "concurrency" section\.'
 ```
 
 The hosted workflow pins Pester and actionlint, and exercises Linux, Windows and
-macOS. Rust release policy and its tests belong in the application repository.
+macOS. [macOS validation is advisory](docs/setup.md#advisory-macos-validation)
+because hosted capacity is unreliable; merges need not wait for queued macOS
+jobs. Agents must keep these checks green and fix observed regressions.
+Publication still requires native macOS installation and all promised artifacts.
+Rust release policy and its tests belong in the application repository.
 Maintainer documentation describes the [design](docs/design.md) and
 [implementation](docs/implementation.md). The
 [bootstrap acceptance evidence](docs/validation.md) records hosted identity,
