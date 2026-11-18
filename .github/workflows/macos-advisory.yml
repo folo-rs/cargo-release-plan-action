@@ -1,0 +1,46 @@
+name: macOS advisory
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  tests:
+    name: macOS tests (advisory)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install test tools
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Install-Module Pester -RequiredVersion 5.7.1 -Force -Scope CurrentUser
+      - name: Test bootstrap
+        shell: pwsh
+        run: |
+          Import-Module Pester -RequiredVersion 5.7.1
+          Invoke-Pester -Path tests -CI -Output Detailed
+  source:
+    name: macOS source installation (advisory)
+    uses: ./.github/workflows/_source-installation.yml
+    with:
+      runner: macos-latest
+  published:
+    name: macOS published ${{ matrix.method }} (advisory)
+    strategy:
+      fail-fast: false
+      matrix:
+        method: [install, binstall]
+    uses: ./.github/workflows/_published-installation.yml
+    with:
+      runner: macos-latest
+      target: aarch64-apple-darwin
+      method: ${{ matrix.method }}

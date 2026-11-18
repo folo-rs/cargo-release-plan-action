@@ -77,14 +77,18 @@ Describe 'Release graph invariants' {
         $release = Get-Content "$PSScriptRoot/../release.json" -Raw | ConvertFrom-Json
         $fixture = Get-Content "$PSScriptRoot/fixtures/release.json" -Raw | ConvertFrom-Json
         $source = Get-Content "$PSScriptRoot/../.github/workflows/source-canary.yml" -Raw
+        $native = Get-Content "$PSScriptRoot/../.github/workflows/_source-installation.yml" -Raw
+        $advisory = Get-Content "$PSScriptRoot/../.github/workflows/macos-advisory.yml" -Raw
         $runners = [regex]::Match($source, '(?m)^\s+runner: \[([^\]]+)\]').Groups[1].Value -split ',\s*'
-        @($runners | Sort-Object) | Should -Be @($release.platforms.runner | Sort-Object)
+        @($runners | Sort-Object) | Should -Be @($release.platforms | Where-Object os -NE macOS | ForEach-Object runner | Sort-Object)
+        $source | Should -Match 'uses: \./\.github/workflows/_source-installation.yml'
+        $advisory | Should -Match 'uses: \./\.github/workflows/_source-installation.yml\r?\n\s+with:\r?\n\s+runner: macos-latest'
         @($fixture.platforms.runner | Sort-Object) | Should -Be @($release.platforms.runner | Sort-Object)
 
         # A stale image-label condition silently skips transfer and checker acceptance.
         $linux = @($release.platforms | Where-Object { $_.os -eq 'Linux' -and $_.arch -eq 'X64' })
         $linux.Count | Should -Be 1
-        $conditions = [regex]::Matches($source, "if: matrix.runner == '([^']+)'")
+        $conditions = [regex]::Matches($native, "if: inputs.runner == '([^']+)'")
         $conditions.Count | Should -BeGreaterThan 0
         foreach ($condition in $conditions) {
             $condition.Groups[1].Value | Should -Be $linux[0].runner
@@ -241,9 +245,15 @@ Describe 'Published installation acceptance' -Tag Integration {
             $workflow | Should -Match 'push:\r?\n\s+branches: \[main\]'
             $workflow | Should -Match 'workflow_dispatch:'
             $workflow | Should -Not -Match 'pull_request:|workflow_call:|id-token:|issues: write'
-            ([regex]::Matches($workflow, "github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'")).Count | Should -Be 2
+            ([regex]::Matches($workflow, "github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'")).Count | Should -Be 3
             $workflow | Should -Match 'uses: \./\.github/workflows/published-installation.yml'
-            $workflow | Should -Match 'needs: availability'
+            $workflow | Should -Match 'needs: \[availability, availability-macos\]'
+            $mac = [regex]::Match($workflow, '(?ms)^  availability-macos:\r?\n(.*?)(?=^  publish:)').Groups[1].Value
+            $mac | Should -Match 'method: \[install, binstall\]'
+            $mac | Should -Match 'uses: \./\.github/workflows/_published-installation.yml'
+            $mac | Should -Match 'runner: macos-latest'
+            $mac | Should -Match 'target: aarch64-apple-darwin'
+            $workflow | Should -Not -Match 'continue-on-error:'
             $workflow | Should -Match 'cancel-in-progress: false\r?\n\s+queue: max'
             $workflow | Should -Match 'ref: \$\{\{ github.sha \}\}'
             $workflow | Should -Match 'fetch-depth: 0'
@@ -275,17 +285,16 @@ Describe 'Published installation acceptance' -Tag Integration {
         }
     }
 
-    It 'keeps the named required gate dependent on the complete install matrix' {
+    It 'keeps the named required gate dependent on the non-macOS install matrix' {
         $jobs = @([regex]::Matches($script:PublishedJobs, '(?m)^  ([a-z-]+):\r?$') | ForEach-Object { $_.Groups[1].Value })
         $jobs | Should -Be @('acceptance', 'matrix', 'install')
         $script:PublishedAcceptance | Should -Match '(?m)^    name: Published installation\r?$'
         $script:PublishedAcceptance | Should -Match '(?m)^    needs: \[matrix, install\]\r?$'
         $script:PublishedAcceptance | Should -Match '(?m)^    if: always\(\)\r?$'
-        $script:PublishedAcceptance | Should -Match 'Assert-WorkflowGate -Profile published'
-        $script:PublishedAcceptance | Should -Match ([regex]::Escape('GH_TOKEN: ${{ github.token }}'))
+        $script:PublishedJobs | Should -Match 'uses: \./\.github/workflows/_published-installation.yml'
     }
 
-    It 'generates fresh source and strict archive legs for every declared target' {
+    It 'generates fresh source and strict archive legs for every required target without scheduling macOS' {
         $matrixJob = [regex]::Match($script:PublishedJobs, '(?ms)^  matrix:\r?\n(.*?)(?=^  install:)').Groups[1].Value
         $run = [regex]::Match($matrixJob, '(?s)        run: \|\r?\n(.*)$').Groups[1].Value
         $originalOutput = $env:GITHUB_OUTPUT
@@ -295,24 +304,84 @@ Describe 'Published installation acceptance' -Tag Integration {
             & ([scriptblock]::Create($run))
             $matrix = (Get-Content $env:GITHUB_OUTPUT -Raw).Trim().Substring('legs='.Length) | ConvertFrom-Json
             $release = Get-Content release.json -Raw | ConvertFrom-Json
-            $matrix.include.Count | Should -Be ($release.platforms.Count * 2)
-            foreach ($platform in $release.platforms) {
+            $matrix.include.Count | Should -Be (@($release.platforms | Where-Object os -NE macOS).Count * 2)
+            @($matrix.include | Where-Object runner -Like 'macos*').Count | Should -Be 0
+            foreach ($platform in @($release.platforms | Where-Object os -NE macOS)) {
                 $legs = @($matrix.include | Where-Object target -CEQ $platform.target)
                 $legs.Count | Should -Be 2
                 @($legs.runner | Select-Object -Unique) | Should -Be @($platform.runner)
                 @($legs.method | Sort-Object) | Should -Be @('binstall', 'install')
-                ($legs | Where-Object method -EQ binstall).archive_only | Should -BeTrue
-                ($legs | Where-Object method -EQ install).archive_only | Should -BeFalse
             }
         }
         finally {
             Pop-Location
             $env:GITHUB_OUTPUT = $originalOutput
         }
-        $script:PublishedJobs | Should -Not -Match 'actions/cache|install-method: path'
-        $script:PublishedJobs | Should -Match '\[guid\]::NewGuid'
-        $script:PublishedJobs | Should -Match 'ref: \$\{\{ github.sha \}\}'
-        $script:PublishedJobs | Should -Match "'--target', 'aarch64-apple-darwin', '--strategies', 'crate-meta-data'"
-        $script:PublishedJobs | Should -Match "The exact published macOS archive did not supply its executable"
+        $native = Get-Content "$PSScriptRoot/../.github/workflows/_published-installation.yml" -Raw
+        $native | Should -Not -Match 'actions/cache|install-method: path'
+        $native | Should -Match '\[guid\]::NewGuid'
+        $native | Should -Match 'ref: \$\{\{ github.sha \}\}'
+        $native | Should -Match ([regex]::Escape("ARCHIVE_ONLY: `${{ inputs.method == 'binstall' }}"))
+        $native | Should -Match "'--target', 'aarch64-apple-darwin', '--strategies', 'crate-meta-data'"
+        $native | Should -Match "The exact published macOS archive did not supply its executable"
+    }
+}
+
+Describe 'Advisory macOS validation boundaries' {
+    It 'keeps macOS entirely outside required workflows and candidate dependencies' -ForEach @(
+        'validate.yml', 'source-canary.yml', 'published-installation.yml',
+        'scheduling-canary.yml', 'validate-release.yml'
+    ) {
+        $workflow = Get-Content (Join-Path "$PSScriptRoot/../.github/workflows" $_) -Raw
+        $workflow | Should -Not -Match 'macos-latest|macos-advisory|continue-on-error:|WorkflowGate|checks: read'
+    }
+
+    It 'runs all native macOS coverage independently and preserves actual failure outcomes' {
+        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/macos-advisory.yml" -Raw
+        $workflow | Should -Match '(?m)^  pull_request:'
+        $workflow | Should -Match 'branches: \[main\]'
+        $workflow | Should -Not -Match 'needs:|continue-on-error:|workflow_call:'
+        $workflow | Should -Match 'runs-on: macos-latest'
+        $workflow | Should -Match 'Invoke-Pester -Path tests -CI'
+        $workflow | Should -Match 'uses: \./\.github/workflows/_source-installation.yml'
+        $workflow | Should -Match 'uses: \./\.github/workflows/_published-installation.yml'
+        $workflow | Should -Match 'method: \[install, binstall\]'
+        $workflow | Should -Match 'target: aarch64-apple-darwin'
+    }
+
+    It 'still blocks required non-macOS <File> results of <Result>' -ForEach @(
+        @{ File = 'validate.yml'; Result = 'failure' },
+        @{ File = 'validate.yml'; Result = 'cancelled' },
+        @{ File = 'validate.yml'; Result = 'skipped' },
+        @{ File = 'source-canary.yml'; Result = 'failure' },
+        @{ File = 'source-canary.yml'; Result = 'cancelled' },
+        @{ File = 'source-canary.yml'; Result = 'skipped' },
+        @{ File = 'published-installation.yml'; Result = 'failure' },
+        @{ File = 'published-installation.yml'; Result = 'cancelled' },
+        @{ File = 'published-installation.yml'; Result = 'skipped' }
+    ) {
+        $workflow = Get-Content (Join-Path "$PSScriptRoot/../.github/workflows" $File) -Raw
+        $gate = [regex]::Match($workflow, '(?ms)^  acceptance:\r?\n(.*?)(?=^  [a-z-]+:)').Groups[1].Value
+        $run = [regex]::Match($gate, '(?s)        run: \|\r?\n(.*)$').Groups[1].Value
+        if (-not $run) { throw 'Required aggregate command missing.' }
+        $originalResults, $originalInstall, $originalMatrix = $env:RESULTS, $env:INSTALL, $env:MATRIX
+        try {
+            $env:RESULTS = @{ tests = @{ result = 'success' } } | ConvertTo-Json
+            $env:INSTALL = 'success'
+            $env:MATRIX = 'success'
+            $verdict = [scriptblock]::Create($run)
+            { & $verdict } | Should -Not -Throw
+            $env:RESULTS = @{ tests = @{ result = $Result } } | ConvertTo-Json
+            $env:INSTALL = $Result
+            { & $verdict } | Should -Throw
+            if ($File -eq 'published-installation.yml') {
+                $env:INSTALL = 'success'
+                $env:MATRIX = $Result
+                { & $verdict } | Should -Throw
+            }
+        }
+        finally {
+            $env:RESULTS, $env:INSTALL, $env:MATRIX = $originalResults, $originalInstall, $originalMatrix
+        }
     }
 }

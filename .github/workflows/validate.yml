@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   actions: read
-  checks: read
 
 jobs:
   acceptance:
@@ -18,16 +17,14 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
       - shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
+          RESULTS: ${{ toJSON(needs) }}
         run: |
-          Import-Module ./.github/scripts/WorkflowGate.psm1
-          $eventData = Get-Content $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json -AsHashtable
-          Assert-WorkflowGate -Profile validation -EventData $eventData -EventName $env:GITHUB_EVENT_NAME -Repository $env:GITHUB_REPOSITORY -RunId $env:GITHUB_RUN_ID -Attempt $env:GITHUB_RUN_ATTEMPT -Sha $env:GITHUB_SHA
+          $results = $env:RESULTS | ConvertFrom-Json -AsHashtable
+          if (@($results.Values | Where-Object result -NE 'success').Count) {
+              throw 'Action tests, exact identity, version readiness and workflow validation must all succeed.'
+          }
   identity:
     uses: ./.github/workflows/identity.yml
     with:
@@ -51,7 +48,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        runner: [ubuntu-latest, windows-latest, macos-latest]
+        runner: [ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

@@ -84,7 +84,8 @@ function Test-ReleaseBearingPath {
             '.github/workflows/validate.yml', '.github/workflows/validate-release.yml',
             '.github/workflows/source-canary.yml', '.github/workflows/published-installation.yml',
             '.github/workflows/scheduling-canary.yml', '.github/workflows/_scheduling-unit.yml',
-            '.github/workflows/publish-action.yml'
+            '.github/workflows/publish-action.yml', '.github/workflows/macos-advisory.yml',
+            '.github/workflows/_source-installation.yml', '.github/workflows/_published-installation.yml'
         )
     }
     return $false

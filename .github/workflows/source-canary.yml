@@ -9,7 +9,6 @@ on:
 permissions:
   contents: read
   actions: read
-  checks: read
 
 jobs:
   acceptance:
@@ -18,120 +17,16 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
       - shell: pwsh
         env:
-          GH_TOKEN: ${{ github.token }}
+          INSTALL: ${{ needs.install.result }}
         run: |
-          Import-Module ./.github/scripts/WorkflowGate.psm1
-          $eventData = Get-Content $env:GITHUB_EVENT_PATH -Raw | ConvertFrom-Json -AsHashtable
-          Assert-WorkflowGate -Profile source -EventData $eventData -EventName $env:GITHUB_EVENT_NAME -Repository $env:GITHUB_REPOSITORY -RunId $env:GITHUB_RUN_ID -Attempt $env:GITHUB_RUN_ATTEMPT -Sha $env:GITHUB_SHA
+          if ($env:INSTALL -ne 'success') { throw 'Every required native source installation must succeed.' }
   install:
     strategy:
       fail-fast: false
       matrix:
-        # Latest images follow hosted updates; ARM64 keeps architecture-specific labels.
-        # Ref: docs/setup.md, "Version selection".
-        runner: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm, macos-latest]
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          repository: folo-rs/folo
-          # Match the paired CRP dependency candidate; published-installation acceptance remains separate.
-          # Ref: docs/setup.md, "Version selection".
-          ref: 2f69a49f51f1986db02a1e89839997a2b769645e
-          path: .source
-          persist-credentials: false
-      - uses: ./
-        id: tool
-        with:
-          command: version
-          install-method: path
-          source-path: .source
-          working-directory: tests/fixtures/consumer
-        env:
-          # The source compiler must not inherit the consumer's older override.
-          RUSTUP_TOOLCHAIN: 1.88.0
-      - name: Verify executable selection
-        shell: pwsh
-        env:
-          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
-          CRP_VERSION: ${{ steps.tool.outputs.version }}
-        run: |
-          $ErrorActionPreference = 'Stop'
-          $release = Get-Content release.json -Raw | ConvertFrom-Json
-          if ($env:CRP_VERSION -cne $release.tools.'cargo-release-plan'.version) { throw 'Unexpected source tool version.' }
-          if ((Get-Command cargo-release-plan).Source -ne $env:CRP_EXECUTABLE) {
-              throw 'The verified executable was not added to PATH.'
-          }
-          & $env:CRP_EXECUTABLE --version
-          if ($LASTEXITCODE -ne 0) { throw 'Source executable cannot run.' }
-          $help = & $env:CRP_EXECUTABLE check --help | Out-String
-          if ($LASTEXITCODE -ne 0) { throw 'Source check help failed.' }
-          foreach ($flag in @('--manifest-path', '--release-history', '--merge-target', '--format', '--config')) {
-              if (-not $help.Contains($flag)) { throw "Source executable does not expose $flag." }
-          }
-          $help = & $env:CRP_EXECUTABLE prepare-publish --help | Out-String
-          if ($LASTEXITCODE -ne 0) { throw 'Source preparation help failed.' }
-          foreach ($flag in @('--manifest-path', '--config', '--source', '--output')) {
-              if (-not $help.Contains($flag)) { throw "Source preparation does not expose $flag." }
-          }
-          $help = & $env:CRP_EXECUTABLE publish registry --help | Out-String
-          if ($LASTEXITCODE -ne 0) { throw 'Source registry help failed.' }
-          foreach ($flag in @('--publication', '--manifest-path', '--output', '--dry-run')) {
-              if (-not $help.Contains($flag)) { throw "Source registry operation does not expose $flag." }
-          }
-          & $env:CRP_EXECUTABLE check-publishing-identity --help
-          if ($LASTEXITCODE -ne 0) { throw 'Source identity probe help failed.' }
-          foreach ($command in @('release-context', 'check-compatibility', 'check-published')) {
-              & $env:CRP_EXECUTABLE $command --help
-              if ($LASTEXITCODE -ne 0) { throw "Missing $command." }
-          }
-          foreach ($phase in @('github', 'binaries', 'report')) {
-              & $env:CRP_EXECUTABLE publish $phase --help
-              if ($LASTEXITCODE -ne 0) { throw "Missing publish $phase." }
-          }
-      - name: Package controller transfer canary
-        if: matrix.runner == 'ubuntu-latest'
-        shell: pwsh
-        env:
-          CONTROLLER: ${{ steps.tool.outputs.executable }}
-        run: |
-          tar -cf "$env:RUNNER_TEMP/controller.tar" -C (Split-Path $env:CONTROLLER) (Split-Path $env:CONTROLLER -Leaf)
-          if ($LASTEXITCODE -ne 0) { throw 'Controller canary packaging failed.' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: matrix.runner == 'ubuntu-latest'
-        id: controller
-        with:
-          name: crp-controller-canary-${{ github.run_id }}-${{ github.run_attempt }}
-          path: ${{ runner.temp }}/controller.tar
-          if-no-files-found: error
-      - uses: ./.github/actions/restore-controller
-        if: matrix.runner == 'ubuntu-latest'
-        with:
-          artifact-id: ${{ steps.controller.outputs.artifact-id }}
-          version: ${{ steps.tool.outputs.version }}
-      - name: Install the pinned external compatibility checker
-        if: matrix.runner == 'ubuntu-latest'
-        uses: ./.github/actions/install-checker
-        with:
-          install-method: path
-          source-path: .source
-      - name: Exercise read-only consumer operations
-        if: matrix.runner == 'ubuntu-latest'
-        shell: pwsh
-        env:
-          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
-          GH_TOKEN: ${{ github.token }}
-        run: ./tests/Invoke-OfflineCanary.ps1 -Executable $env:CRP_EXECUTABLE
-      - name: Stage a real frozen native batch without uploads
-        shell: pwsh
-        env:
-          CRP_EXECUTABLE: ${{ steps.tool.outputs.executable }}
-        run: ./tests/Invoke-BinaryCanary.ps1 -Executable $env:CRP_EXECUTABLE
+        runner: [ubuntu-latest, ubuntu-24.04-arm, windows-latest, windows-11-arm]
+    uses: ./.github/workflows/_source-installation.yml
+    with:
+      runner: ${{ matrix.runner }}

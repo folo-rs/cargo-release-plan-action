@@ -8,8 +8,8 @@ checks on `main` before merging a releasable candidate:
 | Required check | Obligation |
 | --- | --- |
 | Action validation | Bootstrap/invocation and release tests, action version readiness, exact-source identity and workflow syntax. |
-| Source installation | Source installation and real read-only/no-upload operations on every promised native target. |
-| Published installation | Fresh exact published-source and archive-only installation on every manifest target, with external-checker acceptance. |
+| Source installation | Linux/Windows source installation and real read-only/no-upload operations. |
+| Published installation | Fresh exact Linux/Windows published-source and archive-only installation, external-checker acceptance, and independent macOS archive acquisition. |
 | Workflow scheduling | Hosted queue and artifact-routing semantics. |
 
 The workflows report these aggregates for all pull-request file changes,
@@ -18,59 +18,27 @@ Published installation. Up-to-date checks and no bypass are required.
 No approving-review count or merge queue is required by this design.
 The integration does not mutate repository rules.
 
-### How hosted macOS capacity failures are detected
+### Advisory macOS validation
 
-[WorkflowGate.psm1](../.github/scripts/WorkflowGate.psm1) detects capacity failure
-from **authenticated GitHub check-run annotations**, not job logs or a
-queued/cancelled status. Using the workflow token with `actions: read` and
-`checks: read`, it follows the job's `check_run_url` only within the current
-repository's API, reads `GET /repos/{owner}/{repo}/check-runs/{check_run_id}`,
-then paginates
-`GET /repos/{owner}/{repo}/check-runs/{check_run_id}/annotations`.
-At least one annotation must have level `failure` and this **exact,
-case-sensitive** message (no trailing period):
+Hosted macOS ARM64 runners are unreliable on capacity grounds, so macOS
+**validation is always advisory**, without a capacity detector.
+[`macos-advisory.yml`](../.github/workflows/macos-advisory.yml) independently runs
+the tests, source installation and both published-installation methods on
+`macos-latest`. No required aggregate or candidate-validation call depends on
+that workflow: **merging need not wait for queued macOS jobs**, and missing,
+cancelled or failed macOS validation does not block the merge. Actual outcomes
+remain visible; they are not converted to successes with `continue-on-error`.
 
-```text
-The job was not acquired by Runner of type hosted even after multiple attempts
-```
+**Agents must keep macOS checks green and investigate/fix observed regressions.**
+Advisory status is a capacity workaround, not permission to drop macOS support
+or ignore a known bug.
 
-The only permitted accompanying annotation has level `notice` and this exact,
-case-sensitive message; it may appear more than once:
-
-```text
-Due to capacity constraints, jobs targeting macOS arm64 runners may experience longer queue times.
-```
-
-**The notice alone is insufficient.** Any other annotation, unreadable evidence,
-or mismatch between the fetched annotations and `output.annotations_count`
-blocks the exception. Annotation text is compared as data, never executed.
-
-The gate also requires all of the following:
-
-- The authenticated run matches the current repository, run ID, head SHA, event
-  and attempt. It paginates `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs?filter=all`
-  and selects the unique newest execution of each exact expected job name across
-  attempts, retaining older successful jobs only when they were not rerun.
-- The candidate is an explicitly allowlisted macOS leg, with labels exactly
-  `["macos-latest"]`, status `completed`, conclusion `cancelled`, a present and
-  empty `steps` array, and no allocated runner (`runner_id` zero/null and
-  `runner_name` empty/null).
-- Its check has the same job name and head SHA, belongs to the run's check suite,
-  is owned by GitHub Actions (app ID `15368`, slug `github-actions`), and is also
-  `completed`/`cancelled`. The gate rechecks run identity after reconciliation.
-
-Queued status can mean a job is still waiting; cancellation can be user-requested
-or unrelated to capacity. Neither proves acquisition failure. Missing, unknown
-or contradictory evidence, skipped dependencies, non-macOS failures and real
-executed-step failures remain blocking. A proven exception emits an explicit
-warning naming the job, ID and attempt; the raw job remains cancelled, not passed.
-
-Published installation permits this exception only on pull requests. Its Linux
-archive leg independently downloads the exact macOS archive using only
-`crate-meta-data`; missing registry packages or archives still block without
-source fallback. Main publication and manual published-installation validation
-continue to require every native execution. Consumer publication and promised
-release artifacts are unchanged.
+Non-macOS checks remain required. The required Linux archive leg independently
+downloads the exact promised macOS archive using only `crate-meta-data`, without
+source fallback; missing packages or archives still block. Action publication
+is stricter than merging: `publish-action.yml` explicitly waits for successful
+native macOS `install` and `binstall` as well as the non-macOS availability gate.
+Consumer publication and promised native artifact production are unchanged.
 
 ## Version selection
 
@@ -112,8 +80,9 @@ identity. Keep one pending increment for the whole candidate.
 1. Select exact versions and matching source canaries. The tool owner must publish
    the selected packages and native archives first; metadata availability alone
    is not action installation acceptance.
-2. Obtain the current candidate's required PR checks and inspect every source and
-   published installation leg. Rerun failed availability checks when upstream
+2. Obtain the current candidate's required PR checks. Inspect available macOS
+   advisory results and fix observed regressions, but do not wait for queued
+   macOS validation. Rerun failed required availability checks when upstream
    publication completes; they do not rerun automatically.
 3. Have the maintainer accept production pilot evidence, confirm enforcement of
    the main rules policy and authorize the merge. Merging is authorization
