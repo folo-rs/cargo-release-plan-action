@@ -34,7 +34,7 @@ Describe 'Installation selection' {
         $binary.Root | Should -Not -Be $original.Root
         $script:Parameters.Method = 'install'
         $manifestPath = Join-Path $script:Parameters.ActionPath 'release.json'
-        (Get-Content $manifestPath -Raw).Replace('0.4.0', '0.4.1') | Set-Content $manifestPath
+        (Get-Content $manifestPath -Raw).Replace('0.9.0', '0.9.1') | Set-Content $manifestPath
         $updated = Get-InstallationSettings @script:Parameters
         $updated.CacheKey | Should -Not -Be $original.CacheKey
         $updated.Root | Should -Not -Be $original.Root
@@ -56,7 +56,7 @@ Describe 'Installation selection' {
     }
 
     It 'rejects floating versions and unsupported manifest schemas' -ForEach @(
-        @{ Before = '"0.4.0"'; After = '"latest"' }
+        @{ Before = '"0.9.0"'; After = '"latest"' }
         @{ Before = '"schema_version": 1'; After = '"schema_version": 2' }
     ) {
         $manifestPath = Join-Path $script:Parameters.ActionPath 'release.json'
@@ -98,17 +98,17 @@ Describe 'Executable installation' {
             Method = 'install'
             Root = Join-Path $TestDrive 'tools'
             Toolchain = '1.98.1'
-            Version = '0.4.0'
+            Version = '0.9.0'
             Target = 'x86_64-unknown-linux-gnu'
             BinstallVersion = '1.23.0'
             PackagePath = Join-Path $TestDrive 'source/packages/cargo-release-plan'
         }
         Mock Invoke-BootstrapCommand -ModuleName Bootstrap {
             if ($Arguments -contains '--version' -and $Executable -like '*cargo-release-plan*') {
-                'cargo-release-plan 0.4.0'
+                'cargo-release-plan 0.9.0'
             }
             elseif ($Arguments -contains 'metadata') {
-                '{"packages":[{"name":"cargo-release-plan","version":"0.4.0"}]}'
+                '{"packages":[{"name":"cargo-release-plan","version":"0.9.0"}]}'
             }
         }
         Mock Test-Path -ModuleName Bootstrap { $false }
@@ -119,7 +119,7 @@ Describe 'Executable installation' {
         Should -Invoke Invoke-BootstrapCommand -ModuleName Bootstrap -Times 1 -ParameterFilter {
             $Executable -eq 'cargo' -and $Arguments[0] -eq '+1.98.1' -and
             $Arguments -contains 'install' -and $Arguments -contains '--locked' -and
-            $Arguments -contains '=0.4.0'
+            $Arguments -contains '=0.9.0'
         }
     }
 
@@ -140,7 +140,7 @@ Describe 'Executable installation' {
         $script:Settings.Method = 'path'
         $script:Settings.Version = $null
         Install-ReleasePlan $script:Settings | Should -Match 'cargo-release-plan'
-        $script:Settings.Version | Should -Be '0.4.0'
+        $script:Settings.Version | Should -Be '0.9.0'
         Should -Invoke Invoke-BootstrapCommand -ModuleName Bootstrap -Times 1 -ParameterFilter {
             $Executable -eq 'cargo' -and $Arguments -contains 'install' -and
             $Arguments -contains '--path' -and $Arguments -contains '--force' -and
@@ -160,7 +160,7 @@ Describe 'Executable installation' {
             $Executable -eq 'cargo' -and $Arguments -contains '=1.23.0'
         }
         Should -Invoke Invoke-BootstrapCommand -ModuleName Bootstrap -Times 1 -ParameterFilter {
-            $Executable -like '*cargo-binstall*' -and $Arguments -contains '=0.4.0' -and
+            $Executable -like '*cargo-binstall*' -and $Arguments -contains '=0.9.0' -and
             $Arguments -contains '--locked' -and $Arguments -contains '--no-confirm' -and
             $Arguments -contains '--root' -and $Arguments -contains $script:Settings.Root -and
             $Arguments -notcontains '--install-path' -and $Arguments -notcontains '--strategies'

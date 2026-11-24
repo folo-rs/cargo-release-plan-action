@@ -44,10 +44,10 @@ Consumer publication and promised native artifact production are unchanged.
 
 `release.json` owns the independent `action_version`, exact `tools` versions,
 installation compiler, installer and native target/runner table. The selected
-combination is action 0.2.4, CRP 0.8.10, checker 0.50.0, Rust 1.98.1 and
+combination is action 0.3.0, CRP 0.9.0, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
-2f69a49f51f1986db02a1e89839997a2b769645e from the
-[paired Folo dependency candidate](https://github.com/folo-rs/folo/pull/972).
+c0fa2f6c0d95425eaf909e2007949b3c4a4ca5d0 from the
+[paired Folo compatibility candidate](https://github.com/folo-rs/folo/pull/987).
 This source pin does not establish published-package or archive availability.
 
 Validation, installation and consumer workflows use `ubuntu-latest` and
@@ -58,13 +58,16 @@ native acceptance continue to verify operating system and architecture rather
 than assuming an image version.
 
 CRP exposes CLI/artifact contracts: plan/report/prepared schema 8,
-decisions schema 2, compatibility schema 3 and release-context schema 2. It does not expose
+decisions schema 2, compatibility schema 4 and release-context schema 2. It does not expose
 a supported Rust library API. Source-mode controller versions come from source
 metadata, not executable caches or the published CRP pin; its checker is still
 separately pinned.
 
-The independent action patch version selects latest hosted x64 images in
-distributed consumer workflows without changing CLI, schema or command contracts.
+The independent action minor increment accounts for the breaking compatibility
+schema 3-to-4 change in the selected CLI/artifact contract. The unchanged
+plan/report/prepared, decisions and release-context schemas do not require new
+action inputs or artifact conversion. Reviewed comparison exclusions remain an
+opt-in CLI operation, not an action input or a compatibility pass.
 Native source preparation installs the selected compiler without updating the
 shared Rustup executable. Planning and compatibility contracts
 include defining-type origins and explicit unsupported procedural-macro evidence.
@@ -120,7 +123,7 @@ is registered on main. It is not a first-merge bootstrap prerequisite. The same
 validation is already available through the PR checks:
 
 ```powershell
-gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.4
+gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.3.0
 ```
 
 ## Consumer permissions and environment
