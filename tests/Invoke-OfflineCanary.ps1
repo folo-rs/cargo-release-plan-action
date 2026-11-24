@@ -22,7 +22,7 @@ try {
         throw 'Schema query identifies a different executable version.'
     }
     # Exact selected CLI contract; see docs/setup.md, Version selection.
-    $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 4; release_context = 2 }
+    $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 3; release_context = 2 }
     foreach ($schema in $schemas.GetEnumerator()) {
         if ($identity.schemas.($schema.Key) -ne $schema.Value) {
             throw "Unsupported $($schema.Key) schema in executable identity."

@@ -21,9 +21,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: folo-rs/folo
-          # Match the paired CRP compatibility candidate; published-installation acceptance remains separate.
+          # Match the paired CRP dependency candidate; published-installation acceptance remains separate.
           # Ref: docs/setup.md, "Version selection".
-          ref: 5ea3bcad5684cca94021cc6125400f22f14a1172
+          ref: 0ffa3a874f482f3b982cb4e3fd6c6b6dd2a11205
           path: .source
           persist-credentials: false
       - uses: ./
@@ -54,7 +54,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Source schema query failed.' }
           $identity = $identity | ConvertFrom-Json
           if ($identity.tool_version -cne $env:CRP_VERSION) { throw 'Schema query identifies a different source tool.' }
-          $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 4; release_context = 2 }
+          $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 3; release_context = 2 }
           foreach ($schema in $schemas.GetEnumerator()) {
               if ($identity.schemas.($schema.Key) -ne $schema.Value) { throw "Unsupported source $($schema.Key) schema." }
           }
