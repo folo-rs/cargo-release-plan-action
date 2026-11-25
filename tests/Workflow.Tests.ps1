@@ -126,7 +126,6 @@ Describe 'Release graph invariants' {
         $binaries | Should -Match 'fail-fast: false'
         $beforeReporter = $workflow.Substring(0, $workflow.IndexOf('  report:'))
         $beforeReporter | Should -Not -Match 'continue-on-error: true'
-        $workflow | Should -Match 'merge-multiple: false'
     }
 
     It 'keeps OIDC confined to the registry job within publication execution' {

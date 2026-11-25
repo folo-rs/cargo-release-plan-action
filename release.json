@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "action_version": "0.2.4",
+  "action_version": "0.2.5",
   "install_toolchain": "1.98.1",
   "cargo_binstall_version": "1.23.0",
   "tools": {
