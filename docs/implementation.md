@@ -82,14 +82,11 @@ overrides cannot silently select an older compiler.
 
 The read-only installation canary invokes the standalone `version` command
 before creating its consumer workspace and checks the supported schema inventory.
-It verifies compatibility schema 4 with `required_impact` alongside the source-bound
+It verifies compatibility schema 3 with `required_impact` alongside the source-bound
 schema-8 report, including defining-type origins, procedural-macro identity and
 explicit `no-baseline` and `unsupported-proc-macro` reasons with null comparison
 impacts. The macro fixture retains a public consumer contract so exclusion cannot
 pass merely by declaring the package private.
-Schema 4 can retain caller-reviewed exclusions bound to the actually selected
-baseline, without reporting a comparison or required impact. The action adds no
-exclusion input and does not reinterpret completed evidence as an API pass.
 Short `--version` probes and the root action's `version` command keep their
 executable-identity role; schema discovery does not replace exact installation
 pins or introduce runtime schema conversion.
