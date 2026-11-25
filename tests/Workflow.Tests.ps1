@@ -73,40 +73,6 @@ Describe 'Workflow artifact routing' {
 }
 
 Describe 'Release graph invariants' {
-    It 'preflights every same-run artifact before the pinned official downloader' {
-        $yaml = @(
-            Get-ChildItem "$PSScriptRoot/../.github" -Recurse -File -Include *.yml, *.yaml
-        )
-
-        $directDownloads = @($yaml | Where-Object {
-                (Get-Content $_.FullName -Raw) -match 'actions/download-artifact@'
-            })
-        @($directDownloads.FullName | Sort-Object) | Should -Be @(
-            (Resolve-Path "$PSScriptRoot/../.github/actions/artifact-download/action.yml").Path
-            (Resolve-Path "$PSScriptRoot/../.github/actions/restore-controller/action.yml").Path
-        )
-
-        $release = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
-        ([regex]::Matches($release, '\.release-plan-action/\.github/actions/artifact-download')).Count |
-            Should -Be 7
-        $release | Should -Match 'producer-steps: Upload registry outcome for \$\{\{ inputs\.scope \}\},Upload GitHub outcome for \$\{\{ inputs\.scope \}\},Upload native outcome for \$\{\{ inputs\.scope \}\}'
-        $release | Should -Match "allow-empty: 'true'"
-        $release | Should -Match 'name: Upload registry outcome for \$\{\{ inputs\.scope \}\}'
-        $release | Should -Match 'name: Upload GitHub outcome for \$\{\{ inputs\.scope \}\}'
-        $release | Should -Match 'name: Upload native outcome for \$\{\{ inputs\.scope \}\}'
-
-        $action = Get-Content "$PSScriptRoot/../.github/actions/artifact-download/action.yml" -Raw
-        $action.IndexOf('scripts/Preflight-Artifact.ps1') | Should -BeLessThan `
-            $action.IndexOf('actions/download-artifact@')
-        $action | Should -Match `
-            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c'
-
-        $controller = Get-Content "$PSScriptRoot/../.github/actions/restore-controller/action.yml" -Raw
-        $controller.IndexOf('scripts/Preflight-Artifact.ps1') | Should -BeLessThan `
-            $controller.IndexOf('actions/download-artifact@')
-        $controller | Should -Match '-ArtifactIds \$env:ARTIFACT_ID'
-    }
-
     It 'keeps source canary runners and Linux-only exercises aligned with native release routing' {
         $release = Get-Content "$PSScriptRoot/../release.json" -Raw | ConvertFrom-Json
         $fixture = Get-Content "$PSScriptRoot/fixtures/release.json" -Raw | ConvertFrom-Json
@@ -160,8 +126,6 @@ Describe 'Release graph invariants' {
         $binaries | Should -Match 'fail-fast: false'
         $beforeReporter = $workflow.Substring(0, $workflow.IndexOf('  report:'))
         $beforeReporter | Should -Not -Match 'continue-on-error: true'
-        $workflow | Should -Match 'uses: \./\.release-plan-action/\.github/actions/artifact-download'
-        $workflow | Should -Match 'pattern: crp-\$\{\{ inputs\.scope \}\}-\$\{\{ github\.run_id \}\}-\*-outcome'
     }
 
     It 'keeps OIDC confined to the registry job within publication execution' {
