@@ -51,10 +51,14 @@ jobs:
           ref: ${{ inputs.action-sha }}
           path: .release-plan-action
           persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/artifact-download
+        with:
+          artifact-ids: ${{ inputs.controller-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/controller
       - uses: ./.release-plan-action/.github/actions/restore-controller
         id: tool
         with:
-          artifact-id: ${{ inputs.controller-id }}
           version: ${{ inputs.controller-version }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -104,10 +108,14 @@ jobs:
           ref: ${{ inputs.action-sha }}
           path: .release-plan-action
           persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/artifact-download
+        with:
+          artifact-ids: ${{ inputs.controller-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/controller
       - uses: ./.release-plan-action/.github/actions/restore-controller
         id: tool
         with:
-          artifact-id: ${{ inputs.controller-id }}
           version: ${{ inputs.controller-version }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -158,10 +166,14 @@ jobs:
           ref: ${{ inputs.action-sha }}
           path: .release-plan-action
           persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/artifact-download
+        with:
+          artifact-ids: ${{ inputs.controller-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/controller
       - uses: ./.release-plan-action/.github/actions/restore-controller
         id: tool
         with:
-          artifact-id: ${{ inputs.controller-id }}
           version: ${{ inputs.controller-version }}
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -300,10 +312,14 @@ jobs:
           ref: ${{ inputs.action-sha }}
           path: .release-plan-action
           persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/artifact-download
+        with:
+          artifact-ids: ${{ inputs.controller-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/controller
       - uses: ./.release-plan-action/.github/actions/restore-controller
         id: tool
         with:
-          artifact-id: ${{ inputs.controller-id }}
           version: ${{ inputs.controller-version }}
       - name: Retrieve original intent if retained
         uses: ./.release-plan-action/.github/actions/artifact-download

@@ -11,6 +11,7 @@ $PSNativeCommandUseErrorActionPreference = $true
 $script:DefaultMaximumAttempts = 12
 $script:DefaultRetryDelaySeconds = 5
 $script:MetadataTimeoutSeconds = 30
+$script:TransientStatuses = @(404, 408, 429, 500, 502, 503, 504)
 
 function Get-ArtifactHttpStatusCode {
     # Extracts a response status when present; statusless transport failures remain
@@ -31,7 +32,7 @@ function Test-ArtifactTransientFailure {
     param([Parameter(Mandatory)] [System.Management.Automation.ErrorRecord] $ErrorRecord)
 
     $statusCode = Get-ArtifactHttpStatusCode -ErrorRecord $ErrorRecord
-    return $null -ne $statusCode -and $statusCode -in @(404, 408, 429, 500, 502, 503, 504)
+    return $null -ne $statusCode -and $statusCode -in $script:TransientStatuses
 }
 
 function Get-ArtifactResponseProperty {
@@ -392,7 +393,13 @@ function Invoke-ArtifactPreflight {
             }
 
             if ($ready) {
-                Write-Output 'Artifact metadata is visible and fresh for the selected workflow run.'
+                Write-Host 'Artifact metadata is visible and fresh for the selected workflow run.'
+                foreach ($artifact in $selected) {
+                    [pscustomobject]@{
+                        Id = [long] (Get-ArtifactResponseProperty -Response $artifact -Name 'id')
+                        Name = [string] (Get-ArtifactResponseProperty -Response $artifact -Name 'name')
+                    }
+                }
                 return
             }
         }
@@ -404,9 +411,93 @@ function Invoke-ArtifactPreflight {
             throw "Selected artifact metadata was still unavailable for workflow run $RunId " +
                 "after $MaximumAttempts attempts."
         }
-        Write-Output "Selected artifact metadata is not visible yet for workflow run $RunId; retrying."
+        Write-Host "Selected artifact metadata is not visible yet for workflow run $RunId; retrying."
         Start-Sleep -Seconds $RetryDelaySeconds
     }
 }
 
-Export-ModuleMember -Function Invoke-ArtifactPreflight
+function Get-ArtifactArchiveStatus {
+    # The REST download endpoint returns a signed redirect. Read only headers and
+    # disable redirects so neither the credential nor the signed URL leaves this request.
+    param([uri] $Uri, [hashtable] $Headers)
+
+    $handler = [Net.Http.HttpClientHandler]::new()
+    $handler.AllowAutoRedirect = $false
+    $client = [Net.Http.HttpClient]::new($handler)
+    $client.Timeout = [TimeSpan]::FromSeconds($script:MetadataTimeoutSeconds)
+    try {
+        $client.DefaultRequestHeaders.UserAgent.ParseAdd('cargo-release-plan-action')
+        foreach ($header in $Headers.GetEnumerator()) {
+            $client.DefaultRequestHeaders.Add($header.Key, $header.Value)
+        }
+        $response = $client.GetAsync($Uri, [Net.Http.HttpCompletionOption]::ResponseHeadersRead).
+            GetAwaiter().GetResult()
+        try {
+            if ([int] $response.StatusCode -eq 302 -and -not $response.Headers.Location) {
+                throw 'GitHub returned an archive redirect without a Location.'
+            }
+            return [int] $response.StatusCode
+        }
+        finally { $response.Dispose() }
+    }
+    finally { $client.Dispose() }
+}
+
+function Wait-ArtifactArchiveRedirect {
+    # After an actual transfer failure, exercise the REST downloader's GET with the
+    # workflow credential. A redirect authorizes a transfer, not access to the blob.
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)] [string] $ApiUrl,
+        [Parameter(Mandatory)] [string] $Repository,
+        [Parameter(Mandatory)] [long[]] $ArtifactIds,
+        [Parameter(Mandatory)] [string] $GitHubToken
+    )
+
+    $headers = Get-ArtifactHeaders -GitHubToken $GitHubToken
+    foreach ($id in $ArtifactIds) {
+        $uri = "$($ApiUrl.TrimEnd('/'))/repos/$Repository/actions/artifacts/$id/zip"
+        for ($attempt = 1; $attempt -le $script:DefaultMaximumAttempts; $attempt++) {
+            $status = Get-ArtifactArchiveStatus -Uri $uri -Headers $headers
+            if ($status -eq 302) { break }
+            $detail = "Archive GET for artifact $id in $Repository returned HTTP $status " +
+                "with the workflow token (attempt $attempt/$script:DefaultMaximumAttempts)."
+            if ($status -eq 404 -and $attempt -eq $script:DefaultMaximumAttempts -and $ArtifactIds.Count -eq 1) {
+                # A masked REST denial may outlast retries. The official same-run
+                # client can retry one immutable ID without accepting a partial set.
+                Write-Warning "$detail Retrying the transfer with the same-run artifact service instead."
+                return $false
+            }
+            if ($status -notin $script:TransientStatuses -or
+                $attempt -eq $script:DefaultMaximumAttempts) {
+                throw "$detail Check this job's artifact access; a 404 does not distinguish delay from denial."
+            }
+            Write-Warning "$detail Retrying in $script:DefaultRetryDelaySeconds seconds."
+            Start-Sleep -Seconds $script:DefaultRetryDelaySeconds
+        }
+    }
+    return $true
+}
+
+function Assert-ArtifactTransferComplete {
+    # The pinned downloader fails for a missing single ID, but only warns when
+    # some of several IDs disappear. Multi-artifact receipts must have exactly
+    # the named directories from the frozen selection, not a flat receipt.
+    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] [object[]] $Selection)
+
+    if ($Selection.Count -eq 1) { return }
+    $missing = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($item in $Selection) {
+        if (-not $missing.Add($item.Name)) {
+            throw "Cannot distinguish multiple selected artifact IDs named '$($item.Name)'."
+        }
+    }
+    foreach ($entry in (Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)) {
+        if (-not $entry.PSIsContainer -or -not $missing.Remove($entry.Name)) {
+            throw "Incomplete artifact transfer: unexpected staged entry '$($entry.Name)'."
+        }
+    }
+    if ($missing.Count) { throw "Incomplete artifact transfer: missing $($missing -join ', ')." }
+}
+
+Export-ModuleMember -Function Invoke-ArtifactPreflight, Wait-ArtifactArchiveRedirect, Assert-ArtifactTransferComplete
