@@ -277,7 +277,10 @@ next transfer attempt; it does not prove that the archive bytes are readable.
 If a single ID persistently returns 404, the final transfer retries the same-run
 service instead: the job cannot distinguish propagation delay from masked REST
 access denial. Each attempt extracts into its own temporary directory; the job
-moves only the completed transfer into the consumer's directory. Other permanent
+moves only the completed transfer into the consumer's directory. For a selection
+of multiple receipts, a successful download must contain exactly the artifact
+directories named by the frozen IDs. A partial first transfer triggers recovery;
+a partial retry never reaches the report. Other permanent
 errors and failed final transfers remain failures.
 
 Pattern consumers derive their expected count from successful, explicitly named

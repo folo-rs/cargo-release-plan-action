@@ -395,7 +395,10 @@ function Invoke-ArtifactPreflight {
             if ($ready) {
                 Write-Host 'Artifact metadata is visible and fresh for the selected workflow run.'
                 foreach ($artifact in $selected) {
-                    [long] (Get-ArtifactResponseProperty -Response $artifact -Name 'id')
+                    [pscustomobject]@{
+                        Id = [long] (Get-ArtifactResponseProperty -Response $artifact -Name 'id')
+                        Name = [string] (Get-ArtifactResponseProperty -Response $artifact -Name 'name')
+                    }
                 }
                 return
             }
@@ -476,4 +479,25 @@ function Wait-ArtifactArchiveRedirect {
     return $true
 }
 
-Export-ModuleMember -Function Invoke-ArtifactPreflight, Wait-ArtifactArchiveRedirect
+function Assert-ArtifactTransferComplete {
+    # The pinned downloader fails for a missing single ID, but only warns when
+    # some of several IDs disappear. Multi-artifact receipts must have exactly
+    # the named directories from the frozen selection, not a flat receipt.
+    param([Parameter(Mandatory)] [string] $Path, [Parameter(Mandatory)] [object[]] $Selection)
+
+    if ($Selection.Count -eq 1) { return }
+    $missing = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($item in $Selection) {
+        if (-not $missing.Add($item.Name)) {
+            throw "Cannot distinguish multiple selected artifact IDs named '$($item.Name)'."
+        }
+    }
+    foreach ($entry in (Get-ChildItem -LiteralPath $Path -Force -ErrorAction Stop)) {
+        if (-not $entry.PSIsContainer -or -not $missing.Remove($entry.Name)) {
+            throw "Incomplete artifact transfer: unexpected staged entry '$($entry.Name)'."
+        }
+    }
+    if ($missing.Count) { throw "Incomplete artifact transfer: missing $($missing -join ', ')." }
+}
+
+Export-ModuleMember -Function Invoke-ArtifactPreflight, Wait-ArtifactArchiveRedirect, Assert-ArtifactTransferComplete

@@ -43,7 +43,8 @@ InModuleScope ArtifactPreflight {
                 -RunId 7 -GitHubToken 'token' -ArtifactIds '41' `
                 -MaximumAttempts 2 -RetryDelaySeconds 0)
 
-            $ids | Should -Be @(41)
+            $ids.Id | Should -Be @(41)
+            $ids.Name | Should -Be $script:artifact.name
             Should -Invoke Select-GitHubArtifacts -Times 2 -Exactly
             Should -Invoke Start-Sleep -Times 1 -Exactly
         }
@@ -54,6 +55,19 @@ InModuleScope ArtifactPreflight {
             @(Select-GitHubArtifacts -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
                     -RunId 7 -GitHubToken 'token' -ArtifactIds '41,42') |
                 Should -HaveCount 0
+        }
+
+        It 'rejects partial multi-artifact staging even when the downloader reports success' {
+            $selection = @($script:artifact, $script:secondArtifact)
+            $stage = New-Item -ItemType Directory -Path (Join-Path $TestDrive stage)
+            # A subset of one extracts flat. A larger subset uses named directories.
+            $flat = New-Item -ItemType File -Path (Join-Path $stage outcome.json)
+            { Assert-ArtifactTransferComplete $stage $selection } | Should -Throw '*unexpected staged entry*'
+            Remove-Item -LiteralPath $flat
+            $null = New-Item -ItemType Directory -Path (Join-Path $stage $script:artifact.name)
+            { Assert-ArtifactTransferComplete $stage $selection } | Should -Throw '*missing*github-outcome*'
+            $null = New-Item -ItemType Directory -Path (Join-Path $stage $script:secondArtifact.name)
+            { Assert-ArtifactTransferComplete $stage $selection } | Should -Not -Throw
         }
 
         It 'selects the latest exact name and one artifact per distinct pattern name' {
