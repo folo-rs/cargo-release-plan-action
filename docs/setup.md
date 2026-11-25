@@ -67,7 +67,9 @@ The independent action minor increment accounts for the breaking compatibility
 schema 3-to-4 change in the selected CLI/artifact contract. The unchanged
 plan/report/prepared, decisions and release-context schemas do not require new
 action inputs or artifact conversion. Reviewed comparison exclusions remain an
-opt-in CLI operation, not an action input or a compatibility pass.
+opt-in CLI operation, not an action input or a compatibility pass. The same
+pending increment includes bounded visibility retries for same-run artifact
+transfers.
 Native source preparation installs the selected compiler without updating the
 shared Rustup executable. Planning and compatibility contracts
 include defining-type origins and explicit unsupported procedural-macro evidence.

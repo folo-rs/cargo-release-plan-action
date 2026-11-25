@@ -66,7 +66,7 @@ jobs:
         if: hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
       - name: Restore original intent on reruns
         if: github.run_attempt > 1
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.release-plan-action/.github/actions/artifact-download
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
           github-token: ${{ github.token }}
@@ -82,7 +82,8 @@ jobs:
           CRP_SOURCE: ${{ inputs.source }}
           CRP_OUTPUT: ${{ runner.temp }}/intent/publication.json
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload immutable publication
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: github.run_attempt == 1
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
@@ -114,7 +115,8 @@ jobs:
           path: consumer
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Download immutable publication
+        uses: ./.release-plan-action/.github/actions/artifact-download
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
           github-token: ${{ github.token }}
@@ -131,12 +133,16 @@ jobs:
           CRP_OUTPUT: ${{ runner.temp }}/registry/outcome.json
           CRP_DRY_RUN: 'false'
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload registry outcome for ${{ inputs.scope }}
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-registry-outcome
           path: ${{ runner.temp }}/registry/outcome.json
-          if-no-files-found: warn
+          # A successful named upload step is completeness evidence, so a missing
+          # file must fail rather than imply an artifact that never existed.
+          if-no-files-found: error
   github:
     needs: registry
     runs-on: ubuntu-latest
@@ -163,7 +169,8 @@ jobs:
           path: consumer
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Download immutable publication
+        uses: ./.release-plan-action/.github/actions/artifact-download
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
           github-token: ${{ github.token }}
@@ -180,13 +187,15 @@ jobs:
           CRP_BATCHES: ${{ runner.temp }}/github/batches
           CRP_DRY_RUN: 'false'
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload GitHub outcome for ${{ inputs.scope }}
         id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && !cancelled()
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-github-outcome
           path: ${{ runner.temp }}/github
-          if-no-files-found: warn
+          # Keep report producer counting tied to actual retained receipts.
+          if-no-files-found: error
   binaries:
     needs: [registry, github]
     # Stable native slots are intentional: a failed GitHub job's rerun must discover
@@ -206,12 +215,14 @@ jobs:
           ref: ${{ inputs.action-sha }}
           path: .release-plan-action
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Download immutable publication
+        uses: ./.release-plan-action/.github/actions/artifact-download
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/intent
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Download GitHub phase receipt
+        uses: ./.release-plan-action/.github/actions/artifact-download
         with:
           artifact-ids: ${{ needs.github.outputs.artifact-id }}
           github-token: ${{ github.token }}
@@ -265,12 +276,15 @@ jobs:
           CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-build
         run: |
           & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - name: Upload native outcome for ${{ inputs.scope }}
+        id: upload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && steps.batch.outputs.path != ''
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-${{ github.run_attempt }}-binaries-${{ matrix.target }}-outcome
           path: ${{ runner.temp }}/binary/outcome.json
-          if-no-files-found: warn
+          # Matrix slots only become producer evidence when an outcome was retained.
+          if-no-files-found: error
   report:
     needs: [prepare, registry, github, binaries]
     if: always()
@@ -292,7 +306,7 @@ jobs:
           artifact-id: ${{ inputs.controller-id }}
           version: ${{ inputs.controller-version }}
       - name: Retrieve original intent if retained
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.release-plan-action/.github/actions/artifact-download
         continue-on-error: true
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
@@ -300,11 +314,13 @@ jobs:
           path: ${{ runner.temp }}/intent
       - name: Retrieve retained phase outcomes without merging their directories
         id: receipts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        uses: ./.release-plan-action/.github/actions/artifact-download
         continue-on-error: true
         with:
           pattern: crp-${{ inputs.scope }}-${{ github.run_id }}-*-outcome
-          merge-multiple: false
+          # Successful producer uploads establish the exact expected count.
+          producer-steps: Upload registry outcome for ${{ inputs.scope }},Upload GitHub outcome for ${{ inputs.scope }},Upload native outcome for ${{ inputs.scope }}
+          allow-empty: 'true'
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/outcomes
       - name: Reconcile actual job results and write the final report

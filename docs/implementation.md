@@ -259,6 +259,26 @@ Only its exact unsupported-key diagnostic is excluded. Unit tests assert
 `queue: max` plus noncancellation and a read-only hosted scheduling fixture
 exercises nested queued executions and partial-result artifact routing.
 
+All same-run artifact consumers use `ArtifactPreflight.psm1` through the private
+artifact-download action, then transfer archives with the pinned official
+`actions/download-artifact`. The preflight reads the complete authenticated run
+inventory for exact IDs, names and patterns, matching the official action's
+authenticated selector path. It retries absent artifacts and recognized transient
+metadata statuses within one bounded budget, while 401, 403, 410, expired
+artifacts and statusless transport errors remain visible. The official action
+owns archive transfer and extraction after metadata becomes visible and fresh.
+The preflight uses a twelve-attempt budget with five-second delays and a
+thirty-second timeout on each metadata request.
+
+Pattern consumers derive their expected count from successful, explicitly named
+upload steps across every run attempt. The helper normalizes reusable-workflow job
+prefixes and includes the release scope in each producer-step name, so unrelated
+workflow invocations cannot inflate the expected count. It deduplicates reused
+successful job copies by scoped execution identity and timestamps; a genuinely
+rerun producer increases the count while an untouched producer does not. The
+final reporter may continue after the optional evidence transfer fails, but
+normal controller and publication paths preserve the exhausted-budget failure.
+
 ## Action version readiness and reconciliation
 
 `Release.psm1` and `Publish-Release.ps1` implement the independent action release
