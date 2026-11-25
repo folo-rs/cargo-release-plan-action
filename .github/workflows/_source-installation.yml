@@ -21,9 +21,9 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           repository: folo-rs/folo
-          # Match the paired CRP dependency candidate; published-installation acceptance remains separate.
+          # Match the paired CRP compatibility candidate; published-installation acceptance remains separate.
           # Ref: docs/setup.md, "Version selection".
-          ref: 2f69a49f51f1986db02a1e89839997a2b769645e
+          ref: 5ea3bcad5684cca94021cc6125400f22f14a1172
           path: .source
           persist-credentials: false
       - uses: ./
@@ -50,6 +50,14 @@ jobs:
           }
           & $env:CRP_EXECUTABLE --version
           if ($LASTEXITCODE -ne 0) { throw 'Source executable cannot run.' }
+          $identity = & $env:CRP_EXECUTABLE version | Out-String
+          if ($LASTEXITCODE -ne 0) { throw 'Source schema query failed.' }
+          $identity = $identity | ConvertFrom-Json
+          if ($identity.tool_version -cne $env:CRP_VERSION) { throw 'Schema query identifies a different source tool.' }
+          $schemas = @{ plan = 8; report = 8; prepared = 8; decisions = 2; compatibility = 4; release_context = 2 }
+          foreach ($schema in $schemas.GetEnumerator()) {
+              if ($identity.schemas.($schema.Key) -ne $schema.Value) { throw "Unsupported source $($schema.Key) schema." }
+          }
           $help = & $env:CRP_EXECUTABLE check --help | Out-String
           if ($LASTEXITCODE -ne 0) { throw 'Source check help failed.' }
           foreach ($flag in @('--manifest-path', '--release-history', '--merge-target', '--format', '--config')) {
