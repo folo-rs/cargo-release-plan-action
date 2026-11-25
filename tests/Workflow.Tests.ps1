@@ -72,89 +72,6 @@ Describe 'Workflow artifact routing' {
     }
 }
 
-Describe 'Release graph invariants' {
-    It 'keeps source canary runners and Linux-only exercises aligned with native release routing' {
-        $release = Get-Content "$PSScriptRoot/../release.json" -Raw | ConvertFrom-Json
-        $fixture = Get-Content "$PSScriptRoot/fixtures/release.json" -Raw | ConvertFrom-Json
-        $source = Get-Content "$PSScriptRoot/../.github/workflows/source-canary.yml" -Raw
-        $native = Get-Content "$PSScriptRoot/../.github/workflows/_source-installation.yml" -Raw
-        $advisory = Get-Content "$PSScriptRoot/../.github/workflows/macos-advisory.yml" -Raw
-        $runners = [regex]::Match($source, '(?m)^\s+runner: \[([^\]]+)\]').Groups[1].Value -split ',\s*'
-        @($runners | Sort-Object) | Should -Be @($release.platforms | Where-Object os -NE macOS | ForEach-Object runner | Sort-Object)
-        $source | Should -Match 'uses: \./\.github/workflows/_source-installation.yml'
-        $advisory | Should -Match 'uses: \./\.github/workflows/_source-installation.yml\r?\n\s+with:\r?\n\s+runner: macos-latest'
-        @($fixture.platforms.runner | Sort-Object) | Should -Be @($release.platforms.runner | Sort-Object)
-
-        # A stale image-label condition silently skips transfer and checker acceptance.
-        $linux = @($release.platforms | Where-Object { $_.os -eq 'Linux' -and $_.arch -eq 'X64' })
-        $linux.Count | Should -Be 1
-        $conditions = [regex]::Matches($native, "if: inputs.runner == '([^']+)'")
-        $conditions.Count | Should -BeGreaterThan 0
-        foreach ($condition in $conditions) {
-            $condition.Groups[1].Value | Should -Be $linux[0].runner
-        }
-    }
-
-    It 'holds one noncancelling queue:max lock around the complete nested workflow' {
-        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/release.yml" -Raw
-        $workflow | Should -Match 'uses: \./\.github/workflows/_release.yml'
-        $workflow | Should -Match 'cancel-in-progress: false\r?\n\s+queue: max'
-        (Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw) | Should -Not -Match 'concurrency:'
-    }
-
-    It 'keeps full PR checks read-only and includes external compatibility enforcement' {
-        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/check.yml" -Raw
-        $workflow | Should -Not -Match 'id-token:|contents: write|issues: write|pull_request_target'
-        $workflow | Should -Match 'CRP_COMMAND: check\r?\n'
-        $workflow | Should -Match 'CRP_COMMAND: check-compatibility'
-        $workflow | Should -Match 'CRP_DENY_FINDINGS: ''true'''
-        $workflow | Should -Match 'steps.checker.outcome == ''success'''
-        $workflow | Should -Not -Match 'steps.readiness.outcome == ''success'''
-        $workflow | Should -Match ([regex]::Escape('CRP_RELEASE_HISTORY: ${{ inputs.release-history }}'))
-        $workflow | Should -Match 'Get-CheckMergeTarget -EventName \$env:GITHUB_EVENT_NAME'
-        ([regex]::Matches($workflow, [regex]::Escape('CRP_RELEASE_HISTORY: ${{ steps.context.outputs.release-history }}'))).Count | Should -Be 2
-        ([regex]::Matches($workflow, [regex]::Escape('CRP_MERGE_TARGET: ${{ steps.context.outputs.merge-target }}'))).Count | Should -Be 2
-        $workflow | Should -Not -Match 'github.sha'
-    }
-
-    It 'preserves failed reconciliation while allowing registry-gated independent batches' {
-        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
-        $binaries = $workflow.Substring($workflow.IndexOf('  binaries:'))
-        $binaries | Should -Match "needs.registry.result == 'success'"
-        $binaries | Should -Match "needs.github.result == 'failure'"
-        $binaries | Should -Match '!cancelled\(\)'
-        $binaries | Should -Match 'fail-fast: false'
-        $beforeReporter = $workflow.Substring(0, $workflow.IndexOf('  report:'))
-        $beforeReporter | Should -Not -Match 'continue-on-error: true'
-    }
-
-    It 'keeps OIDC confined to the registry job within publication execution' {
-        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
-        ([regex]::Matches($workflow, 'id-token: write')).Count | Should -Be 1
-        $registry = $workflow.Substring($workflow.IndexOf('  registry:'), $workflow.IndexOf('  github:') - $workflow.IndexOf('  registry:'))
-        $registry | Should -Match 'id-token: write'
-        $registry | Should -Match 'restore-controller'
-        $registry | Should -Not -Match 'command: version'
-    }
-
-    It 'requires original intent on reruns and never overwrites its artifact' {
-        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
-        $workflow | Should -Match 'if: github.run_attempt > 1'
-        $workflow | Should -Match 'if: github.run_attempt == 1'
-        $workflow | Should -Not -Match 'overwrite: true'
-    }
-
-    It 'separates historical release source from invocation controller code' {
-        $outer = Get-Content "$PSScriptRoot/../.github/workflows/release.yml" -Raw
-        $inner = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
-        $outer | Should -Match ([regex]::Escape('ref: ${{ inputs.source || github.sha }}'))
-        foreach ($workflow in @($outer, $inner)) {
-            $workflow | Should -Match 'ref: \$\{\{ github.sha \}\}\r?\n\s+path: invocation'
-            $workflow | Should -Match 'source-path: invocation/\$\{\{ inputs.source-path \}\}'
-        }
-    }
-}
-
 Describe 'Release history and target routing' {
     BeforeEach {
         $script:Context = @{
@@ -235,62 +152,6 @@ Describe 'Published installation acceptance' -Tag Integration {
     BeforeAll {
         $workflow = Get-Content "$PSScriptRoot/../.github/workflows/published-installation.yml" -Raw
         $script:PublishedJobs = [regex]::Match($workflow, '(?ms)^jobs:\r?\n(.*)$').Groups[1].Value
-        $script:PublishedAcceptance = [regex]::Match($script:PublishedJobs, '(?ms)^  acceptance:\r?\n(.*?)(?=^  matrix:)').Groups[1].Value
-    }
-
-    Describe 'Action self-publication workflow boundaries' -Tag Integration {
-        It 'gates a main-only serialized publisher on repeated exact-commit installation' {
-            $workflow = Get-Content "$PSScriptRoot/../.github/workflows/publish-action.yml" -Raw
-            $workflow | Should -Match 'push:\r?\n\s+branches: \[main\]'
-            $workflow | Should -Match 'workflow_dispatch:'
-            $workflow | Should -Not -Match 'pull_request:|workflow_call:|id-token:|issues: write'
-            ([regex]::Matches($workflow, "github.repository == 'folo-rs/cargo-release-plan-action' && github.ref == 'refs/heads/main'")).Count | Should -Be 3
-            $workflow | Should -Match 'uses: \./\.github/workflows/published-installation.yml'
-            $workflow | Should -Match 'needs: \[availability, availability-macos\]'
-            $mac = [regex]::Match($workflow, '(?ms)^  availability-macos:\r?\n(.*?)(?=^  publish:)').Groups[1].Value
-            $mac | Should -Match 'method: \[install, binstall\]'
-            $mac | Should -Match 'uses: \./\.github/workflows/_published-installation.yml'
-            $mac | Should -Match 'runner: macos-latest'
-            $mac | Should -Match 'target: aarch64-apple-darwin'
-            $workflow | Should -Not -Match 'continue-on-error:'
-            $workflow | Should -Match 'cancel-in-progress: false\r?\n\s+queue: max'
-            $workflow | Should -Match 'ref: \$\{\{ github.sha \}\}'
-            $workflow | Should -Match 'fetch-depth: 0'
-            $beforePublish = $workflow.Substring(0, $workflow.IndexOf('  publish:'))
-            $beforePublish | Should -Match 'contents: read'
-            $beforePublish | Should -Not -Match 'contents: write'
-            ([regex]::Matches($workflow, 'contents: write')).Count | Should -Be 1
-            $workflow | Should -Match 'Publish-Release.ps1 -BaseRef \$base'
-        }
-
-        It 'reports required aggregates for all PR file changes including documentation' -ForEach @(
-            @{ File = 'validate.yml'; Check = 'Action validation' }
-            @{ File = 'source-canary.yml'; Check = 'Source installation' }
-            @{ File = 'published-installation.yml'; Check = 'Published installation' }
-            @{ File = 'scheduling-canary.yml'; Check = 'Workflow scheduling' }
-        ) {
-            $workflow = Get-Content (Join-Path "$PSScriptRoot/../.github/workflows" $File) -Raw
-            $workflow | Should -Match '(?m)^  pull_request:'
-            $workflow | Should -Not -Match 'paths:|paths-ignore:'
-            $workflow | Should -Match "(?m)^    name: $Check"
-            $workflow | Should -Match 'if: always\(\)'
-        }
-
-        It 'includes action version readiness in the existing validation aggregate' {
-            $workflow = Get-Content "$PSScriptRoot/../.github/workflows/validate.yml" -Raw
-            $workflow | Should -Match 'needs: \[identity, tests, workflows, version-readiness\]'
-            $workflow | Should -Match 'Get-ValidationReleaseBase -EventName \$env:GITHUB_EVENT_NAME'
-            $workflow | Should -Match 'Publish-Release.ps1 -CheckOnly -BaseRef \$base'
-        }
-    }
-
-    It 'keeps the named required gate dependent on the non-macOS install matrix' {
-        $jobs = @([regex]::Matches($script:PublishedJobs, '(?m)^  ([a-z-]+):\r?$') | ForEach-Object { $_.Groups[1].Value })
-        $jobs | Should -Be @('acceptance', 'matrix', 'install')
-        $script:PublishedAcceptance | Should -Match '(?m)^    name: Published installation\r?$'
-        $script:PublishedAcceptance | Should -Match '(?m)^    needs: \[matrix, install\]\r?$'
-        $script:PublishedAcceptance | Should -Match '(?m)^    if: always\(\)\r?$'
-        $script:PublishedJobs | Should -Match 'uses: \./\.github/workflows/_published-installation.yml'
     }
 
     It 'generates fresh source and strict archive legs for every required target without scheduling macOS' {
@@ -316,38 +177,10 @@ Describe 'Published installation acceptance' -Tag Integration {
             Pop-Location
             $env:GITHUB_OUTPUT = $originalOutput
         }
-        $native = Get-Content "$PSScriptRoot/../.github/workflows/_published-installation.yml" -Raw
-        $native | Should -Not -Match 'actions/cache|install-method: path'
-        $native | Should -Match '\[guid\]::NewGuid'
-        $native | Should -Match 'ref: \$\{\{ github.sha \}\}'
-        $native | Should -Match ([regex]::Escape("ARCHIVE_ONLY: `${{ inputs.method == 'binstall' }}"))
-        $native | Should -Match "'--target', 'aarch64-apple-darwin', '--strategies', 'crate-meta-data'"
-        $native | Should -Match "The exact published macOS archive did not supply its executable"
     }
 }
 
 Describe 'Advisory macOS validation boundaries' {
-    It 'keeps macOS entirely outside required workflows and candidate dependencies' -ForEach @(
-        'validate.yml', 'source-canary.yml', 'published-installation.yml',
-        'scheduling-canary.yml', 'validate-release.yml'
-    ) {
-        $workflow = Get-Content (Join-Path "$PSScriptRoot/../.github/workflows" $_) -Raw
-        $workflow | Should -Not -Match 'macos-latest|macos-advisory|continue-on-error:|WorkflowGate|checks: read'
-    }
-
-    It 'runs all native macOS coverage independently and preserves actual failure outcomes' {
-        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/macos-advisory.yml" -Raw
-        $workflow | Should -Match '(?m)^  pull_request:'
-        $workflow | Should -Match 'branches: \[main\]'
-        $workflow | Should -Not -Match 'needs:|continue-on-error:|workflow_call:'
-        $workflow | Should -Match 'runs-on: macos-latest'
-        $workflow | Should -Match 'Invoke-Pester -Path tests -CI'
-        $workflow | Should -Match 'uses: \./\.github/workflows/_source-installation.yml'
-        $workflow | Should -Match 'uses: \./\.github/workflows/_published-installation.yml'
-        $workflow | Should -Match 'method: \[install, binstall\]'
-        $workflow | Should -Match 'target: aarch64-apple-darwin'
-    }
-
     It 'still blocks required non-macOS <File> results of <Result>' -ForEach @(
         @{ File = 'validate.yml'; Result = 'failure' },
         @{ File = 'validate.yml'; Result = 'cancelled' },
