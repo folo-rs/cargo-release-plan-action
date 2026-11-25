@@ -73,15 +73,18 @@ Describe 'Workflow artifact routing' {
 }
 
 Describe 'Release graph invariants' {
-    It 'routes every same-run artifact download through the bounded shared downloader' {
+    It 'preflights every same-run artifact before the pinned official downloader' {
         $yaml = @(
             Get-ChildItem "$PSScriptRoot/../.github" -Recurse -File -Include *.yml, *.yaml
         )
 
-        foreach ($file in $yaml) {
-            $content = Get-Content $file.FullName -Raw
-            $content | Should -Not -Match 'actions/download-artifact@'
-        }
+        $directDownloads = @($yaml | Where-Object {
+                (Get-Content $_.FullName -Raw) -match 'actions/download-artifact@'
+            })
+        @($directDownloads.FullName | Sort-Object) | Should -Be @(
+            (Resolve-Path "$PSScriptRoot/../.github/actions/artifact-download/action.yml").Path
+            (Resolve-Path "$PSScriptRoot/../.github/actions/restore-controller/action.yml").Path
+        )
 
         $release = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
         ([regex]::Matches($release, '\.release-plan-action/\.github/actions/artifact-download')).Count |
@@ -92,8 +95,15 @@ Describe 'Release graph invariants' {
         $release | Should -Match 'name: Upload GitHub outcome for \$\{\{ inputs\.scope \}\}'
         $release | Should -Match 'name: Upload native outcome for \$\{\{ inputs\.scope \}\}'
 
+        $action = Get-Content "$PSScriptRoot/../.github/actions/artifact-download/action.yml" -Raw
+        $action.IndexOf('scripts/Preflight-Artifact.ps1') | Should -BeLessThan `
+            $action.IndexOf('actions/download-artifact@')
+        $action | Should -Match `
+            'actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c'
+
         $controller = Get-Content "$PSScriptRoot/../.github/actions/restore-controller/action.yml" -Raw
-        $controller | Should -Match 'scripts/Download-Artifact\.ps1'
+        $controller.IndexOf('scripts/Preflight-Artifact.ps1') | Should -BeLessThan `
+            $controller.IndexOf('actions/download-artifact@')
         $controller | Should -Match '-ArtifactIds \$env:ARTIFACT_ID'
     }
 

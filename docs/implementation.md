@@ -256,14 +256,16 @@ Only its exact unsupported-key diagnostic is excluded. Unit tests assert
 `queue: max` plus noncancellation and a read-only hosted scheduling fixture
 exercises nested queued executions and partial-result artifact routing.
 
-All same-run artifact consumers use `ArtifactDownload.psm1` through the private
-artifact-download action. Exact IDs use the artifact endpoint; names and patterns
-use the complete paginated run inventory. The downloader retries only absent
-metadata or an archive endpoint's 404 within one bounded budget, while 401, 403,
-410, expired artifacts, transport errors and extraction failures remain visible.
-It downloads every selected archive to private staging before extracting any of
-them, so an archive that has not become downloadable cannot leave a partial
-receipt set.
+All same-run artifact consumers use `ArtifactPreflight.psm1` through the private
+artifact-download action, then transfer archives with the pinned official
+`actions/download-artifact`. The preflight reads the complete authenticated run
+inventory for exact IDs, names and patterns, matching the official action's
+authenticated selector path. It retries absent artifacts and recognized transient
+metadata statuses within one bounded budget, while 401, 403, 410, expired
+artifacts and statusless transport errors remain visible. The official action
+owns archive transfer and extraction after metadata becomes visible and fresh.
+The preflight uses a twelve-attempt budget with five-second delays and a
+thirty-second timeout on each metadata request.
 
 Pattern consumers derive their expected count from successful, explicitly named
 upload steps across every run attempt. The helper normalizes reusable-workflow job

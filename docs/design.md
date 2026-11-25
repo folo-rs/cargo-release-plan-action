@@ -72,11 +72,11 @@ Native targets are x86_64 and aarch64 Linux and Windows, plus aarch64 macOS.
 Hosted runners follow latest stable image aliases where the alias preserves the
 target architecture. Linux and Windows ARM64 use architecture-specific labels
 until matching latest aliases exist.
-Workflow jobs use a bounded retry budget that covers both producer metadata and
-archive-download visibility. Pattern consumers require every successful producer
-upload while accepting unchanged jobs inherited by a partial rerun. A persistent
-failure remains a failure; optional final-report evidence retains its explicitly
-non-fatal path.
+Workflow jobs preflight producer metadata and freshness within a bounded retry
+budget, then use the official artifact action for archive transfer. Pattern
+consumers require every successful producer upload while accepting unchanged
+jobs inherited by a partial rerun. A persistent failure remains a failure;
+optional final-report evidence retains its explicitly non-fatal path.
 Release runs use non-cancelling `queue: max` serialization and matrix fail-fast is
 disabled. Trusted Publishing registers the consumer's calling `release.yml`
 workflow identity and optional environment, not the reusable workflow's identity.

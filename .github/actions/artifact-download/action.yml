@@ -1,5 +1,5 @@
 name: Download same-run artifact
-description: Download a same-run artifact with bounded metadata and archive visibility retries.
+description: Preflight same-run artifact metadata, then download with the official action.
 inputs:
   path:
     required: true
@@ -25,10 +25,9 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Download selected same-run artifact
+    - name: Preflight selected same-run artifact
       shell: pwsh
       env:
-        CRP_ARTIFACT_PATH: ${{ inputs.path }}
         CRP_ARTIFACT_IDS: ${{ inputs.artifact-ids }}
         CRP_ARTIFACT_NAME: ${{ inputs.name }}
         CRP_ARTIFACT_PATTERN: ${{ inputs.pattern }}
@@ -45,14 +44,21 @@ runs:
             ForEach-Object { $_.Trim() } |
             Where-Object { $_ }
         )
-        & "$env:CRP_ACTION_PATH/../../../scripts/Download-Artifact.ps1" `
+        & "$env:CRP_ACTION_PATH/../../../scripts/Preflight-Artifact.ps1" `
           -ApiUrl $env:GITHUB_API_URL `
           -Repository $env:GITHUB_REPOSITORY `
           -RunId $env:GITHUB_RUN_ID `
-          -Path $env:CRP_ARTIFACT_PATH `
           -GitHubToken $env:GH_TOKEN `
           -ArtifactIds $env:CRP_ARTIFACT_IDS `
           -Name $env:CRP_ARTIFACT_NAME `
           -Pattern $env:CRP_ARTIFACT_PATTERN `
           -ProducerSteps $producerSteps `
           -AllowEmpty:$allowEmpty
+    - name: Download selected same-run artifact
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      with:
+        artifact-ids: ${{ inputs.artifact-ids }}
+        name: ${{ inputs.name }}
+        pattern: ${{ inputs.pattern }}
+        github-token: ${{ inputs.github-token }}
+        path: ${{ inputs.path }}
