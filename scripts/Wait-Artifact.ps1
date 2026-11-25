@@ -60,65 +60,48 @@ $stablePatternObservations = 0
 
 for ($attempt = 1; $attempt -le $AttemptLimit; $attempt++) {
     $visible = $false
+    $page = 1
+    $seen = 0
+    $matchCount = 0
 
-    if ($PSCmdlet.ParameterSetName -ceq 'Id') {
-        try {
-            $artifact = Invoke-RestMethod `
-                -Uri "$env:GITHUB_API_URL/repos/$Repository/actions/artifacts/$ArtifactId" `
-                -Headers $headers `
-                -TimeoutSec $requestTimeoutSeconds
-            $visible = [string] $artifact.id -ceq $ArtifactId
+    do {
+        $response = Invoke-RestMethod `
+            -Uri "$env:GITHUB_API_URL/repos/$Repository/actions/runs/$RunId/artifacts?per_page=100&page=$page" `
+            -Headers $headers `
+            -TimeoutSec $requestTimeoutSeconds
+        $artifacts = @($response.artifacts)
+        if ($PSCmdlet.ParameterSetName -ceq 'Id') {
+            $matchCount += @($artifacts | Where-Object { [string] $_.id -ceq $ArtifactId }).Count
         }
-        catch {
-            $statusCode = $null
-            $responseProperty = $_.Exception.PSObject.Properties['Response']
-            if ($responseProperty -and $responseProperty.Value) {
-                $statusCode = [int] $responseProperty.Value.StatusCode
-            }
-            if ($statusCode -ne 404) { throw }
-        }
-    }
-    else {
-        $page = 1
-        $seen = 0
-        $matchCount = 0
-
-        do {
-            $response = Invoke-RestMethod `
-                -Uri "$env:GITHUB_API_URL/repos/$Repository/actions/runs/$RunId/artifacts?per_page=100&page=$page" `
-                -Headers $headers `
-                -TimeoutSec $requestTimeoutSeconds
-            $artifacts = @($response.artifacts)
-            if ($PSCmdlet.ParameterSetName -ceq 'Name') {
-                $matchCount += @($artifacts | Where-Object name -CEQ $Name).Count
-            }
-            else {
-                $matchCount += @($artifacts | Where-Object name -CLike $Pattern).Count
-            }
-
-            $seen += $artifacts.Count
-            $page++
-        } while (($PSCmdlet.ParameterSetName -ceq 'Pattern' -or $matchCount -eq 0) -and
-            $seen -lt [int] $response.total_count -and $artifacts.Count -gt 0)
-
-        if ($PSCmdlet.ParameterSetName -ceq 'Name') {
-            $visible = $matchCount -gt 0
-        }
-        elseif ($matchCount -gt 0) {
-            if ($null -ne $previousPatternCount -and $matchCount -eq $previousPatternCount) {
-                $stablePatternObservations++
-            }
-            else {
-                $stablePatternObservations = 1
-                $previousPatternCount = $matchCount
-            }
-
-            $visible = $stablePatternObservations -ge $patternStabilityTarget
+        elseif ($PSCmdlet.ParameterSetName -ceq 'Name') {
+            $matchCount += @($artifacts | Where-Object name -CEQ $Name).Count
         }
         else {
-            $previousPatternCount = $null
-            $stablePatternObservations = 0
+            $matchCount += @($artifacts | Where-Object name -CLike $Pattern).Count
         }
+
+        $seen += $artifacts.Count
+        $page++
+    } while (($PSCmdlet.ParameterSetName -ceq 'Pattern' -or $matchCount -eq 0) -and
+        $seen -lt [int] $response.total_count -and $artifacts.Count -gt 0)
+
+    if ($PSCmdlet.ParameterSetName -cne 'Pattern') {
+        $visible = $matchCount -gt 0
+    }
+    elseif ($matchCount -gt 0) {
+        if ($null -ne $previousPatternCount -and $matchCount -eq $previousPatternCount) {
+            $stablePatternObservations++
+        }
+        else {
+            $stablePatternObservations = 1
+            $previousPatternCount = $matchCount
+        }
+
+        $visible = $stablePatternObservations -ge $patternStabilityTarget
+    }
+    else {
+        $previousPatternCount = $null
+        $stablePatternObservations = 0
     }
 
     if ($visible) {

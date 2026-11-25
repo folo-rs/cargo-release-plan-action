@@ -23,7 +23,12 @@ Describe 'Artifact visibility retries' {
     It 'waits until an exact artifact ID is visible and then stops' {
         Mock Invoke-RestMethod {
             $global:ArtifactQueryCount++
-            @{ id = if ($global:ArtifactQueryCount -eq 1) { '99' } else { '123' } }
+            @{
+                total_count = 1
+                artifacts = @(@{
+                    id = if ($global:ArtifactQueryCount -eq 1) { '99' } else { '123' }
+                })
+            }
         }
 
         & $script:WaitArtifact `
@@ -34,38 +39,47 @@ Describe 'Artifact visibility retries' {
             -DelaySeconds 1
 
         Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter {
-            $Uri -eq 'https://api.github.test/repos/owner/repository/actions/artifacts/123' -and
+            $Uri -eq 'https://api.github.test/repos/owner/repository/actions/runs/456/artifacts?per_page=100&page=1' -and
             $Headers.Authorization -eq 'Bearer test-only-token'
         }
         Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 1 }
     }
 
-    It 'retries an artifact endpoint that reports transient not-found' {
+    It 'searches every run-artifact page for an exact ID' {
         Mock Invoke-RestMethod {
-            $global:ArtifactQueryCount++
-            if ($global:ArtifactQueryCount -eq 1) {
-                $exception = [Exception]::new('Not found')
-                $exception | Add-Member Response ([pscustomobject]@{ StatusCode = 404 })
-                throw $exception
+            if ([string] $Uri -like '*page=1') {
+                @{
+                    total_count = 2
+                    artifacts = @(@{ id = '99' })
+                }
             }
-            @{ id = '123' }
+            else {
+                @{
+                    total_count = 2
+                    artifacts = @(@{ id = '123' })
+                }
+            }
         }
 
         & $script:WaitArtifact `
             -Repository owner/repository `
             -RunId 456 `
             -ArtifactId 123 `
-            -AttemptLimit 2 `
             -DelaySeconds 1
 
-        Should -Invoke Invoke-RestMethod -Times 2 -Exactly
-        Should -Invoke Start-Sleep -Times 1 -Exactly
+        Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+            $Uri -like '*/artifacts?per_page=100&page=2'
+        }
+        Should -Invoke Start-Sleep -Times 0 -Exactly
     }
 
     It 'preserves final failure when an exact artifact ID remains unavailable' {
         Mock Invoke-RestMethod {
             $global:ArtifactQueryCount++
-            @{ id = '99' }
+            @{
+                total_count = 1
+                artifacts = @(@{ id = '99' })
+            }
         }
 
         {

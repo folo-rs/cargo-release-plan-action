@@ -257,12 +257,13 @@ Only its exact unsupported-key diagnostic is excluded. Unit tests assert
 exercises nested queued executions and partial-result artifact routing.
 
 All same-run artifact consumers use `scripts/Wait-Artifact.ps1` before
-`actions/download-artifact`. The probe queries the artifact by exact ID or lists
-the current run for an exact name or name pattern. It retries missing visibility
-with the bounded defaults, but immediately propagates authorization and other API
-failures. Once the expected artifact is visible, the download action runs once.
-The reporter alone may continue after a visibility timeout because its receipt and
-intent evidence are already optional; normal publishing paths preserve failure.
+`actions/download-artifact`. The probe paginates the current run's artifact
+inventory for an exact ID, exact name or name pattern, matching the download
+action's own lookup boundary. It retries missing visibility with the bounded
+defaults, but immediately propagates authorization and other API failures. Once
+the expected artifact is visible, the download action runs once. The reporter
+alone may continue after a visibility timeout because its receipt and intent
+evidence are already optional; normal publishing paths preserve failure.
 
 ## Action version readiness and reconciliation
 
