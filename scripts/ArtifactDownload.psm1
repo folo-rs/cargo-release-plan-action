@@ -196,7 +196,14 @@ function Get-ExpectedArtifactCount {
         $marker = Get-ArtifactJobMarker -Job $job
         $started = [string] (Get-ArtifactResponseProperty -Response $job -Name 'started_at')
         $completed = [string] (Get-ArtifactResponseProperty -Response $job -Name 'completed_at')
-        $execution = ConvertTo-Json -InputObject @($marker, $started, $completed) -Compress
+        $stepIdentity = @(
+            $successfulSteps |
+                ForEach-Object { [string] (Get-ArtifactResponseProperty -Response $_ -Name 'name') } |
+                Sort-Object -CaseSensitive -Unique
+        )
+        $execution = ConvertTo-Json -InputObject @(
+            $marker, $stepIdentity, $started, $completed
+        ) -Compress
         if ($executions.ContainsKey($execution)) { continue }
 
         $executions[$execution] = $true
@@ -389,7 +396,7 @@ function Invoke-ArtifactDownload {
                     -GitHubToken $GitHubToken -ArtifactIds $ArtifactIds -Name $Name -Pattern $Pattern)
             $ready = $selected.Count -gt 0
             if ($selector[0] -ceq 'pattern') {
-                $ready = $selected.Count -ge $expectedCount -and ($selected.Count -gt 0 -or $expectedCount -eq 0)
+                $ready = $selected.Count -gt 0 -and $selected.Count -ge $expectedCount
             }
 
             $archives = @()

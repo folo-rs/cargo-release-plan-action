@@ -133,7 +133,7 @@ jobs:
           CRP_OUTPUT: ${{ runner.temp }}/registry/outcome.json
           CRP_DRY_RUN: 'false'
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
-      - name: Upload registry outcome
+      - name: Upload registry outcome for ${{ inputs.scope }}
         id: upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
@@ -187,7 +187,7 @@ jobs:
           CRP_BATCHES: ${{ runner.temp }}/github/batches
           CRP_DRY_RUN: 'false'
         run: ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
-      - name: Upload GitHub outcome
+      - name: Upload GitHub outcome for ${{ inputs.scope }}
         id: upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && !cancelled()
@@ -276,7 +276,7 @@ jobs:
           CARGO_TARGET_DIR: ${{ runner.temp }}/cargo-build
         run: |
           & ./.release-plan-action/scripts/Invoke-ReleasePlan.ps1
-      - name: Upload native outcome
+      - name: Upload native outcome for ${{ inputs.scope }}
         id: upload
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always() && steps.batch.outputs.path != ''
@@ -319,7 +319,7 @@ jobs:
         with:
           pattern: crp-${{ inputs.scope }}-${{ github.run_id }}-*-outcome
           # Successful producer uploads establish the exact expected count.
-          producer-steps: Upload registry outcome,Upload GitHub outcome,Upload native outcome
+          producer-steps: Upload registry outcome for ${{ inputs.scope }},Upload GitHub outcome for ${{ inputs.scope }},Upload native outcome for ${{ inputs.scope }}
           allow-empty: 'true'
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/outcomes

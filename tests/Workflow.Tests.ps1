@@ -86,11 +86,11 @@ Describe 'Release graph invariants' {
         $release = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
         ([regex]::Matches($release, '\.release-plan-action/\.github/actions/artifact-download')).Count |
             Should -Be 7
-        $release | Should -Match 'producer-steps: Upload registry outcome,Upload GitHub outcome,Upload native outcome'
+        $release | Should -Match 'producer-steps: Upload registry outcome for \$\{\{ inputs\.scope \}\},Upload GitHub outcome for \$\{\{ inputs\.scope \}\},Upload native outcome for \$\{\{ inputs\.scope \}\}'
         $release | Should -Match "allow-empty: 'true'"
-        $release | Should -Match 'name: Upload registry outcome'
-        $release | Should -Match 'name: Upload GitHub outcome'
-        $release | Should -Match 'name: Upload native outcome'
+        $release | Should -Match 'name: Upload registry outcome for \$\{\{ inputs\.scope \}\}'
+        $release | Should -Match 'name: Upload GitHub outcome for \$\{\{ inputs\.scope \}\}'
+        $release | Should -Match 'name: Upload native outcome for \$\{\{ inputs\.scope \}\}'
 
         $controller = Get-Content "$PSScriptRoot/../.github/actions/restore-controller/action.yml" -Raw
         $controller | Should -Match 'scripts/Download-Artifact\.ps1'

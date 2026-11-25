@@ -267,10 +267,12 @@ receipt set.
 
 Pattern consumers derive their expected count from successful, explicitly named
 upload steps across every run attempt. The helper normalizes reusable-workflow job
-prefixes and deduplicates reused successful job copies by execution timestamps;
-a genuinely rerun producer increases the count while an untouched producer does
-not. The final reporter may continue after the optional evidence transfer fails,
-but normal controller and publication paths preserve the exhausted-budget failure.
+prefixes and includes the release scope in each producer-step name, so unrelated
+workflow invocations cannot inflate the expected count. It deduplicates reused
+successful job copies by scoped execution identity and timestamps; a genuinely
+rerun producer increases the count while an untouched producer does not. The
+final reporter may continue after the optional evidence transfer fails, but
+normal controller and publication paths preserve the exhausted-budget failure.
 
 ## Action version readiness and reconciliation
 

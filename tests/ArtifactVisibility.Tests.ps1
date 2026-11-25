@@ -236,6 +236,37 @@ InModuleScope ArtifactDownload {
                 Should -Be 2
         }
 
+        It 'counts producer uploads only for the current invocation scope' {
+            Mock Get-GitHubRunJobs {
+                @(
+                    [pscustomobject]@{
+                        name = 'release-a / registry'
+                        run_attempt = 1
+                        started_at = '2026-01-01T00:00:10Z'
+                        completed_at = '2026-01-01T00:01:00Z'
+                        steps = @([pscustomobject]@{
+                                name = 'Upload registry outcome for scope-a'
+                                conclusion = 'success'
+                            })
+                    }
+                    [pscustomobject]@{
+                        name = 'release-b / registry'
+                        run_attempt = 1
+                        started_at = '2026-01-01T00:00:10Z'
+                        completed_at = '2026-01-01T00:01:00Z'
+                        steps = @([pscustomobject]@{
+                                name = 'Upload registry outcome for scope-b'
+                                conclusion = 'success'
+                            })
+                    }
+                )
+            }
+
+            Get-ExpectedArtifactCount -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                -RunId 7 -ProducerSteps 'Upload registry outcome for scope-a' -Headers @{} |
+                Should -Be 1
+        }
+
         It 'allows an optional empty pattern after successful producer filtering' {
             Mock Get-ExpectedArtifactCount { 0 }
             Mock Select-GitHubArtifacts { throw 'Empty pattern must not be selected.' }
@@ -260,6 +291,20 @@ InModuleScope ArtifactDownload {
             } | Should -Throw '*after 3 attempts*'
 
             Should -Invoke Select-GitHubArtifacts -Times 3 -Exactly
+            Should -Invoke Save-GitHubArtifactArchive -Times 0 -Exactly
+        }
+
+        It 'rejects an empty pattern result unless allow-empty is enabled' {
+            Mock Get-ExpectedArtifactCount { 0 }
+            Mock Select-GitHubArtifacts { @() }
+
+            {
+                Invoke-ArtifactDownload -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -RunId 7 -GitHubToken 'token' -Path (Join-Path $TestDrive 'empty-required') `
+                    -Pattern 'crp-scope-7-*-outcome' -ProducerSteps 'Upload registry outcome' `
+                    -MaximumAttempts 2 -RetryDelaySeconds 0
+            } | Should -Throw '*still unavailable*2 attempts*'
+
             Should -Invoke Save-GitHubArtifactArchive -Times 0 -Exactly
         }
 
