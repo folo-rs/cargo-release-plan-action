@@ -14,6 +14,16 @@ outputs:
 runs:
   using: composite
   steps:
+    - name: Wait for controller artifact visibility
+      shell: pwsh
+      env:
+        ARTIFACT_ID: ${{ inputs.artifact-id }}
+        GH_TOKEN: ${{ github.token }}
+      run: |
+        & "${{ github.action_path }}/../../../scripts/Wait-Artifact.ps1" `
+          -Repository $env:GITHUB_REPOSITORY `
+          -RunId $env:GITHUB_RUN_ID `
+          -ArtifactId $env:ARTIFACT_ID
     - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
       with:
         artifact-ids: ${{ inputs.artifact-id }}

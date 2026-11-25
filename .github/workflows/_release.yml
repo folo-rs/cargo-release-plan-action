@@ -66,6 +66,16 @@ jobs:
         if: hashFiles('consumer/.github/actions/release-plan-setup/action.yml') != ''
       - name: Restore original intent on reruns
         if: github.run_attempt > 1
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./.release-plan-action/scripts/Wait-Artifact.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -RunId $env:GITHUB_RUN_ID `
+            -Name "crp-${{ inputs.scope }}-$env:GITHUB_RUN_ID-publication"
+      - name: Download original intent on reruns
+        if: github.run_attempt > 1
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
@@ -114,7 +124,17 @@ jobs:
           path: consumer
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Wait for immutable publication visibility
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./.release-plan-action/scripts/Wait-Artifact.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -RunId $env:GITHUB_RUN_ID `
+            -Name "crp-${{ inputs.scope }}-$env:GITHUB_RUN_ID-publication"
+      - name: Download immutable publication
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
           github-token: ${{ github.token }}
@@ -163,7 +183,17 @@ jobs:
           path: consumer
           fetch-depth: 0
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Wait for immutable publication visibility
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./.release-plan-action/scripts/Wait-Artifact.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -RunId $env:GITHUB_RUN_ID `
+            -Name "crp-${{ inputs.scope }}-$env:GITHUB_RUN_ID-publication"
+      - name: Download immutable publication
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
           github-token: ${{ github.token }}
@@ -206,12 +236,33 @@ jobs:
           ref: ${{ inputs.action-sha }}
           path: .release-plan-action
           persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Wait for immutable publication visibility
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./.release-plan-action/scripts/Wait-Artifact.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -RunId $env:GITHUB_RUN_ID `
+            -Name "crp-${{ inputs.scope }}-$env:GITHUB_RUN_ID-publication"
+      - name: Download immutable publication
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: crp-${{ inputs.scope }}-${{ github.run_id }}-publication
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/intent
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+      - name: Wait for GitHub phase receipt visibility
+        shell: pwsh
+        env:
+          ARTIFACT_ID: ${{ needs.github.outputs.artifact-id }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./.release-plan-action/scripts/Wait-Artifact.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -RunId $env:GITHUB_RUN_ID `
+            -ArtifactId $env:ARTIFACT_ID
+      - name: Download GitHub phase receipt
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           artifact-ids: ${{ needs.github.outputs.artifact-id }}
           github-token: ${{ github.token }}
@@ -292,6 +343,18 @@ jobs:
           artifact-id: ${{ inputs.controller-id }}
           version: ${{ inputs.controller-version }}
       - name: Retrieve original intent if retained
+        id: wait-intent
+        shell: pwsh
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./.release-plan-action/scripts/Wait-Artifact.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -RunId $env:GITHUB_RUN_ID `
+            -Name "crp-${{ inputs.scope }}-$env:GITHUB_RUN_ID-publication"
+      - name: Download original intent if visible
+        if: steps.wait-intent.outcome == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with:
@@ -299,7 +362,19 @@ jobs:
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/intent
       - name: Retrieve retained phase outcomes without merging their directories
+        id: wait-receipts
+        shell: pwsh
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          & ./.release-plan-action/scripts/Wait-Artifact.ps1 `
+            -Repository $env:GITHUB_REPOSITORY `
+            -RunId $env:GITHUB_RUN_ID `
+            -Pattern "crp-${{ inputs.scope }}-$env:GITHUB_RUN_ID-*-outcome"
+      - name: Download retained phase outcomes without merging their directories
         id: receipts
+        if: steps.wait-receipts.outcome == 'success'
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         continue-on-error: true
         with:

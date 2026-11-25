@@ -73,6 +73,25 @@ Describe 'Workflow artifact routing' {
 }
 
 Describe 'Release graph invariants' {
+    It 'places a visibility check before every direct artifact download' {
+        $yaml = @(
+            Get-ChildItem "$PSScriptRoot/../.github" -Recurse -File -Include *.yml, *.yaml
+        )
+
+        foreach ($file in $yaml) {
+            $content = Get-Content $file.FullName -Raw
+            $downloads = [regex]::Matches($content, 'uses: actions/download-artifact@')
+            $previousDownloadEnd = 0
+
+            foreach ($download in $downloads) {
+                $segment = $content.Substring($previousDownloadEnd, $download.Index - $previousDownloadEnd)
+                [regex]::Matches($segment, 'Wait-Artifact\.ps1').Count |
+                    Should -Be 1 -Because "$($file.FullName) must wait immediately before each artifact download"
+                $previousDownloadEnd = $download.Index + $download.Length
+            }
+        }
+    }
+
     It 'keeps source canary runners and Linux-only exercises aligned with native release routing' {
         $release = Get-Content "$PSScriptRoot/../release.json" -Raw | ConvertFrom-Json
         $fixture = Get-Content "$PSScriptRoot/fixtures/release.json" -Raw | ConvertFrom-Json
