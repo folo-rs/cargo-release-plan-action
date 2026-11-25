@@ -256,14 +256,21 @@ Only its exact unsupported-key diagnostic is excluded. Unit tests assert
 `queue: max` plus noncancellation and a read-only hosted scheduling fixture
 exercises nested queued executions and partial-result artifact routing.
 
-All same-run artifact consumers use `scripts/Wait-Artifact.ps1` before
-`actions/download-artifact`. The probe paginates the current run's artifact
-inventory for an exact ID, exact name or name pattern, matching the download
-action's own lookup boundary. It retries missing visibility with the bounded
-defaults, but immediately propagates authorization and other API failures. Once
-the expected artifact is visible, the download action runs once. The reporter
-alone may continue after a visibility timeout because its receipt and intent
-evidence are already optional; normal publishing paths preserve failure.
+All same-run artifact consumers use `ArtifactDownload.psm1` through the private
+artifact-download action. Exact IDs use the artifact endpoint; names and patterns
+use the complete paginated run inventory. The downloader retries only absent
+metadata or an archive endpoint's 404 within one bounded budget, while 401, 403,
+410, expired artifacts, transport errors and extraction failures remain visible.
+It downloads every selected archive to private staging before extracting any of
+them, so an archive that has not become downloadable cannot leave a partial
+receipt set.
+
+Pattern consumers derive their expected count from successful, explicitly named
+upload steps across every run attempt. The helper normalizes reusable-workflow job
+prefixes and deduplicates reused successful job copies by execution timestamps;
+a genuinely rerun producer increases the count while an untouched producer does
+not. The final reporter may continue after the optional evidence transfer fails,
+but normal controller and publication paths preserve the exhausted-budget failure.
 
 ## Action version readiness and reconciliation
 

@@ -73,23 +73,28 @@ Describe 'Workflow artifact routing' {
 }
 
 Describe 'Release graph invariants' {
-    It 'places a visibility check before every direct artifact download' {
+    It 'routes every same-run artifact download through the bounded shared downloader' {
         $yaml = @(
             Get-ChildItem "$PSScriptRoot/../.github" -Recurse -File -Include *.yml, *.yaml
         )
 
         foreach ($file in $yaml) {
             $content = Get-Content $file.FullName -Raw
-            $downloads = [regex]::Matches($content, 'uses: actions/download-artifact@')
-            $previousDownloadEnd = 0
-
-            foreach ($download in $downloads) {
-                $segment = $content.Substring($previousDownloadEnd, $download.Index - $previousDownloadEnd)
-                [regex]::Matches($segment, 'Wait-Artifact\.ps1').Count |
-                    Should -Be 1 -Because "$($file.FullName) must wait immediately before each artifact download"
-                $previousDownloadEnd = $download.Index + $download.Length
-            }
+            $content | Should -Not -Match 'actions/download-artifact@'
         }
+
+        $release = Get-Content "$PSScriptRoot/../.github/workflows/_release.yml" -Raw
+        ([regex]::Matches($release, '\.release-plan-action/\.github/actions/artifact-download')).Count |
+            Should -Be 7
+        $release | Should -Match 'producer-steps: Upload registry outcome,Upload GitHub outcome,Upload native outcome'
+        $release | Should -Match "allow-empty: 'true'"
+        $release | Should -Match 'name: Upload registry outcome'
+        $release | Should -Match 'name: Upload GitHub outcome'
+        $release | Should -Match 'name: Upload native outcome'
+
+        $controller = Get-Content "$PSScriptRoot/../.github/actions/restore-controller/action.yml" -Raw
+        $controller | Should -Match 'scripts/Download-Artifact\.ps1'
+        $controller | Should -Match '-ArtifactIds \$env:ARTIFACT_ID'
     }
 
     It 'keeps source canary runners and Linux-only exercises aligned with native release routing' {
@@ -145,7 +150,8 @@ Describe 'Release graph invariants' {
         $binaries | Should -Match 'fail-fast: false'
         $beforeReporter = $workflow.Substring(0, $workflow.IndexOf('  report:'))
         $beforeReporter | Should -Not -Match 'continue-on-error: true'
-        $workflow | Should -Match 'merge-multiple: false'
+        $workflow | Should -Match 'uses: \./\.release-plan-action/\.github/actions/artifact-download'
+        $workflow | Should -Match 'pattern: crp-\$\{\{ inputs\.scope \}\}-\$\{\{ github\.run_id \}\}-\*-outcome'
     }
 
     It 'keeps OIDC confined to the registry job within publication execution' {

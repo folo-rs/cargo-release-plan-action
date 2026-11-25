@@ -1,142 +1,338 @@
 #Requires -Version 7.6
+# Same-run download tests never contact GitHub or wait in real time.
 
-BeforeAll {
-    $script:WaitArtifact = Join-Path $PSScriptRoot '..\scripts\Wait-Artifact.ps1'
-    $script:OriginalApiUrl = $env:GITHUB_API_URL
-    $script:OriginalToken = $env:GH_TOKEN
+Import-Module (Join-Path $PSScriptRoot '..\scripts\ArtifactDownload.psm1') -Force
+
+class ArtifactDownloadHttpException : System.Exception {
+    [object] $Response
+
+    ArtifactDownloadHttpException([int] $StatusCode) : base("HTTP $StatusCode") {
+        $this.Response = [pscustomobject]@{ StatusCode = $StatusCode }
+    }
 }
 
-AfterAll {
-    $env:GITHUB_API_URL = $script:OriginalApiUrl
-    $env:GH_TOKEN = $script:OriginalToken
-    Remove-Variable ArtifactQueryCount -Scope Global -ErrorAction Ignore
-}
+InModuleScope ArtifactDownload {
+    Describe 'Same-run artifact downloads' {
+        BeforeAll {
+            $script:saveArchiveImplementation = ${function:Save-GitHubArtifactArchive}
+        }
 
-Describe 'Artifact visibility retries' {
-    BeforeEach {
-        $env:GITHUB_API_URL = 'https://api.github.test'
-        $env:GH_TOKEN = 'test-only-token'
-        $global:ArtifactQueryCount = 0
-        Mock Start-Sleep
-    }
-
-    It 'waits until an exact artifact ID is visible and then stops' {
-        Mock Invoke-RestMethod {
-            $global:ArtifactQueryCount++
-            @{
-                total_count = 1
-                artifacts = @(@{
-                    id = if ($global:ArtifactQueryCount -eq 1) { '99' } else { '123' }
-                })
+        BeforeEach {
+            $script:artifact = [pscustomobject]@{
+                id = 41
+                name = 'crp-scope-7-1-registry-outcome'
+                expired = $false
+                archive_download_url = 'https://api.github.test/artifacts/41/zip'
+                workflow_run = [pscustomobject]@{ id = 7 }
+            }
+            $script:secondArtifact = [pscustomobject]@{
+                id = 42
+                name = 'crp-scope-7-1-github-outcome'
+                expired = $false
+                archive_download_url = 'https://api.github.test/artifacts/42/zip'
+                workflow_run = [pscustomobject]@{ id = 7 }
+            }
+            $script:selectionCalls = 0
+            $script:archiveCalls = 0
+            $script:originalRunnerTemp = $env:RUNNER_TEMP
+            $env:RUNNER_TEMP = $TestDrive
+            Mock Start-Sleep {}
+            Mock Expand-Archive {}
+            Mock Save-GitHubArtifactArchive {
+                $script:archiveCalls++
+                return $true
             }
         }
 
-        & $script:WaitArtifact `
-            -Repository owner/repository `
-            -RunId 456 `
-            -ArtifactId 123 `
-            -AttemptLimit 2 `
-            -DelaySeconds 1
-
-        Should -Invoke Invoke-RestMethod -Times 2 -Exactly -ParameterFilter {
-            $Uri -eq 'https://api.github.test/repos/owner/repository/actions/runs/456/artifacts?per_page=100&page=1' -and
-            $Headers.Authorization -eq 'Bearer test-only-token'
+        AfterEach {
+            $env:RUNNER_TEMP = $script:originalRunnerTemp
         }
-        Should -Invoke Start-Sleep -Times 1 -Exactly -ParameterFilter { $Seconds -eq 1 }
-    }
 
-    It 'searches every run-artifact page for an exact ID' {
-        Mock Invoke-RestMethod {
-            if ([string] $Uri -like '*page=1') {
-                @{
-                    total_count = 2
-                    artifacts = @(@{ id = '99' })
+        It 'retries an exact ID metadata 404 and then downloads the archive' {
+            $script:inventoryCalls = 0
+            Mock Invoke-RestMethod {
+                $script:inventoryCalls++
+                if ($script:inventoryCalls -eq 1) {
+                    throw [ArtifactDownloadHttpException]::new(404)
+                }
+                return $script:artifact
+            }
+
+            Invoke-ArtifactDownload -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                -RunId 7 -GitHubToken 'token' -Path (Join-Path $TestDrive 'metadata-retry') `
+                -ArtifactIds '41' -MaximumAttempts 2 -RetryDelaySeconds 0
+
+            Should -Invoke Invoke-RestMethod -Times 2 -Exactly
+            Should -Invoke Start-Sleep -Times 1 -Exactly
+            Should -Invoke Save-GitHubArtifactArchive -Times 1 -Exactly
+            Should -Invoke Expand-Archive -Times 1 -Exactly
+        }
+
+        It 'returns an empty run inventory for a transient metadata 404' {
+            Mock Invoke-RestMethod { throw [ArtifactDownloadHttpException]::new(404) }
+
+            @(Get-GitHubRunArtifacts -ApiUrl 'https://api.github.test' `
+                    -Repository 'owner/repository' -RunId 7 -Headers @{}) |
+                Should -HaveCount 0
+        }
+
+        It 'preserves an empty artifact array from an empty run inventory' {
+            Mock Invoke-RestMethod {
+                return [pscustomobject]@{
+                    total_count = 0
+                    artifacts = @()
                 }
             }
-            else {
-                @{
+
+            @(Get-GitHubRunArtifacts -ApiUrl 'https://api.github.test' `
+                    -Repository 'owner/repository' -RunId 7 -Headers @{}) |
+                Should -HaveCount 0
+        }
+
+        It 'paginates the run inventory to a later artifact page' {
+            Mock Invoke-RestMethod {
+                if ($Uri -like '*page=1') {
+                    return [pscustomobject]@{
+                        total_count = 2
+                        artifacts = @([pscustomobject]@{ id = 40; name = 'other' })
+                    }
+                }
+                return [pscustomobject]@{
                     total_count = 2
-                    artifacts = @(@{ id = '123' })
+                    artifacts = @($script:artifact)
                 }
             }
+
+            @(Get-GitHubRunArtifacts -ApiUrl 'https://api.github.test' `
+                    -Repository 'owner/repository' -RunId 7 -Headers @{}) |
+                Should -HaveCount 2
+            Should -Invoke Invoke-RestMethod -Times 2 -Exactly
         }
 
-        & $script:WaitArtifact `
-            -Repository owner/repository `
-            -RunId 456 `
-            -ArtifactId 123 `
-            -DelaySeconds 1
-
-        Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
-            $Uri -like '*/artifacts?per_page=100&page=2'
-        }
-        Should -Invoke Start-Sleep -Times 0 -Exactly
-    }
-
-    It 'preserves final failure when an exact artifact ID remains unavailable' {
-        Mock Invoke-RestMethod {
-            $global:ArtifactQueryCount++
-            @{
-                total_count = 1
-                artifacts = @(@{ id = '99' })
+        It 'retries an archive 404 only after metadata selection succeeds' {
+            Mock Select-GitHubArtifacts { @($script:artifact) }
+            Mock Save-GitHubArtifactArchive {
+                $script:archiveCalls++
+                return $script:archiveCalls -gt 1
             }
+
+            Invoke-ArtifactDownload -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                -RunId 7 -GitHubToken 'token' -Path (Join-Path $TestDrive 'archive-retry') `
+                -ArtifactIds '41' -MaximumAttempts 2 -RetryDelaySeconds 0
+
+            Should -Invoke Save-GitHubArtifactArchive -Times 2 -Exactly
+            Should -Invoke Start-Sleep -Times 1 -Exactly
+            Should -Invoke Expand-Archive -Times 1 -Exactly
         }
 
-        {
-            & $script:WaitArtifact `
-                -Repository owner/repository `
-                -RunId 456 `
-                -ArtifactId 123 `
-                -AttemptLimit 2 `
-                -DelaySeconds 1
-        } | Should -Throw '*retry budget*'
+        It 'does not extract until every selected archive is downloadable' {
+            Mock Select-GitHubArtifacts { @($script:artifact, $script:secondArtifact) }
+            Mock Get-ExpectedArtifactCount { 2 }
+            Mock Save-GitHubArtifactArchive {
+                if ((Get-ArtifactResponseProperty -Response $Artifact -Name 'id') -eq 42) {
+                    return $false
+                }
+                return $true
+            }
 
-        Should -Invoke Invoke-RestMethod -Times 2 -Exactly
-        Should -Invoke Start-Sleep -Times 1 -Exactly
-    }
+            {
+                Invoke-ArtifactDownload -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -RunId 7 -GitHubToken 'token' -Path (Join-Path $TestDrive 'staged') `
+                    -Pattern 'crp-scope-7-*-outcome' `
+                    -ProducerSteps 'Upload registry outcome', 'Upload GitHub outcome' `
+                    -MaximumAttempts 1 -RetryDelaySeconds 0
+            } | Should -Throw '*still unavailable*'
 
-    It 'finds exact names and wildcard patterns in the current workflow run' -ForEach @(
-        @{ Selector = 'Name'; Value = 'controller-transfer'; Queries = 1; Sleeps = 0 }
-        @{ Selector = 'Pattern'; Value = '*-controller'; Queries = 2; Sleeps = 1 }
-    ) {
-        Mock Invoke-RestMethod {
-            $global:ArtifactQueryCount++
-            @{
-                total_count = 2
-                artifacts = @(
-                    @{ name = 'unrelated' }
-                    @{ name = 'release-controller' }
-                    @{ name = 'controller-transfer' }
+            Should -Invoke Expand-Archive -Times 0 -Exactly
+        }
+
+        It 'waits for a changing producer count to become complete' {
+            Mock Get-ExpectedArtifactCount { 2 }
+            Mock Select-GitHubArtifacts {
+                $script:selectionCalls++
+                if ($script:selectionCalls -eq 1) { return @($script:artifact) }
+                return @($script:artifact, $script:secondArtifact)
+            }
+
+            Invoke-ArtifactDownload -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                -RunId 7 -GitHubToken 'token' -Path (Join-Path $TestDrive 'pattern-complete') `
+                -Pattern 'crp-scope-7-*-outcome' `
+                -ProducerSteps 'Upload registry outcome', 'Upload GitHub outcome' `
+                -MaximumAttempts 2 -RetryDelaySeconds 0
+
+            Should -Invoke Start-Sleep -Times 1 -Exactly
+            Should -Invoke Save-GitHubArtifactArchive -Times 2 -Exactly
+            Should -Invoke Expand-Archive -Times 2 -Exactly
+        }
+
+        It 'does not count duplicate artifact names as distinct producers' {
+            $duplicate = [pscustomobject]@{
+                id = 43
+                name = $script:artifact.name
+                expired = $false
+                archive_download_url = 'https://api.github.test/artifacts/43/zip'
+                workflow_run = [pscustomobject]@{ id = 7 }
+            }
+            Mock Get-GitHubRunArtifacts { @($script:artifact, $duplicate) }
+
+            @(Select-GitHubArtifacts -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -RunId 7 -GitHubToken 'token' -Pattern 'crp-scope-7-*-outcome') |
+                Should -HaveCount 1
+        }
+
+        It 'retains artifact names that differ only by case as distinct producers' {
+            $caseArtifact = [pscustomobject]@{
+                id = 43
+                name = 'CRP-SCOPE-7-1-REGISTRY-OUTCOME'
+                expired = $false
+                archive_download_url = 'https://api.github.test/artifacts/43/zip'
+                workflow_run = [pscustomobject]@{ id = 7 }
+            }
+            Mock Get-GitHubRunArtifacts { @($script:artifact, $caseArtifact) }
+
+            @(Select-GitHubArtifacts -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -RunId 7 -GitHubToken 'token' -Pattern '*') |
+                Should -HaveCount 2
+        }
+
+        It 'counts genuine reruns but not reused successful job copies' {
+            Mock Get-GitHubRunJobs {
+                @(
+                    [pscustomobject]@{
+                        name = 'execute / registry'
+                        run_attempt = 1
+                        started_at = '2026-01-01T00:00:10Z'
+                        completed_at = '2026-01-01T00:01:00Z'
+                        steps = @([pscustomobject]@{
+                                name = 'Upload registry outcome'
+                                conclusion = 'success'
+                            })
+                    }
+                    [pscustomobject]@{
+                        name = 'execute / registry'
+                        run_attempt = 2
+                        started_at = '2026-01-01T00:00:10Z'
+                        completed_at = '2026-01-01T00:01:00Z'
+                        steps = @([pscustomobject]@{
+                                name = 'Upload registry outcome'
+                                conclusion = 'success'
+                            })
+                    }
+                    [pscustomobject]@{
+                        name = 'execute / registry'
+                        run_attempt = 2
+                        started_at = '2026-01-01T00:02:10Z'
+                        completed_at = '2026-01-01T00:03:00Z'
+                        steps = @([pscustomobject]@{
+                                name = 'Upload registry outcome'
+                                conclusion = 'success'
+                            })
+                    }
                 )
             }
+
+            Get-ExpectedArtifactCount -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                -RunId 7 -ProducerSteps 'Upload registry outcome' -Headers @{} |
+                Should -Be 2
         }
 
-        if ($Selector -ceq 'Name') {
-            & $script:WaitArtifact -Repository owner/repository -RunId 456 -Name $Value
+        It 'allows an optional empty pattern after successful producer filtering' {
+            Mock Get-ExpectedArtifactCount { 0 }
+            Mock Select-GitHubArtifacts { throw 'Empty pattern must not be selected.' }
+
+            {
+                Invoke-ArtifactDownload -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -RunId 7 -GitHubToken 'token' -Path (Join-Path $TestDrive 'empty-pattern') `
+                    -Pattern 'crp-scope-7-*-outcome' -ProducerSteps 'Upload registry outcome' `
+                    -AllowEmpty -MaximumAttempts 1 -RetryDelaySeconds 0
+            } | Should -Not -Throw
         }
-        else {
-            & $script:WaitArtifact -Repository owner/repository -RunId 456 -Pattern $Value
+
+        It 'fails after a complete producer set never stabilizes' {
+            Mock Get-ExpectedArtifactCount { 2 }
+            Mock Select-GitHubArtifacts { @($script:artifact) }
+
+            {
+                Invoke-ArtifactDownload -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -RunId 7 -GitHubToken 'token' -Path (Join-Path $TestDrive 'unstable-pattern') `
+                    -Pattern 'crp-scope-7-*-outcome' -ProducerSteps 'Upload registry outcome' `
+                    -MaximumAttempts 3 -RetryDelaySeconds 0
+            } | Should -Throw '*after 3 attempts*'
+
+            Should -Invoke Select-GitHubArtifacts -Times 3 -Exactly
+            Should -Invoke Save-GitHubArtifactArchive -Times 0 -Exactly
         }
 
-        Should -Invoke Invoke-RestMethod -Times $Queries -Exactly -ParameterFilter {
-            $Uri -eq 'https://api.github.test/repos/owner/repository/actions/runs/456/artifacts?per_page=100&page=1'
+        It 'rejects artifacts from another run and expired artifacts' -ForEach @(
+            @{ Mode = 'run' }
+            @{ Mode = 'expired' }
+        ) {
+            $artifact = $script:artifact
+            if ($Mode -ceq 'run') {
+                $artifact.workflow_run.id = 8
+            }
+            else {
+                $artifact.expired = $true
+            }
+            Mock Get-GitHubArtifact { $artifact }
+
+            { Select-GitHubArtifacts -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -RunId 7 -GitHubToken 'token' -ArtifactIds '41' } |
+                Should -Throw
         }
-        Should -Invoke Start-Sleep -Times $Sleeps -Exactly
-    }
 
-    It 'does not retry unrelated GitHub API failures' {
-        Mock Invoke-RestMethod { throw 'Forbidden' }
+        It 'returns false for archive 404 and propagates other HTTP failures' {
+            Mock Invoke-WebRequest { throw [ArtifactDownloadHttpException]::new(404) }
+            & $script:saveArchiveImplementation -Artifact $script:artifact `
+                -Path (Join-Path $TestDrive 'archive.zip') -GitHubToken 'token' |
+                Should -BeFalse
 
-        {
-            & $script:WaitArtifact `
-                -Repository owner/repository `
-                -RunId 456 `
-                -ArtifactId 123 `
-                -AttemptLimit 2 `
-                -DelaySeconds 1
-        } | Should -Throw '*Forbidden*'
+            foreach ($status in @(401, 403, 410)) {
+                Mock Invoke-WebRequest { throw [ArtifactDownloadHttpException]::new($script:status) }
+                $script:status = $status
+                { & $script:saveArchiveImplementation -Artifact $script:artifact `
+                        -Path (Join-Path $TestDrive "archive-$status.zip") -GitHubToken 'token' } |
+                    Should -Throw "*HTTP $status*"
+            }
+        }
 
-        Should -Invoke Invoke-RestMethod -Times 1 -Exactly
-        Should -Invoke Start-Sleep -Times 0 -Exactly
+        It 'propagates metadata HTTP 401, 403 and 410 plus statusless failures' {
+            foreach ($status in @(401, 403, 410)) {
+                Mock Invoke-RestMethod { throw [ArtifactDownloadHttpException]::new($script:status) }
+                $script:status = $status
+                { Get-GitHubArtifact -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                        -ArtifactId 41 -Headers @{} } |
+                    Should -Throw "*HTTP $status*"
+            }
+
+            Mock Invoke-RestMethod { throw [System.IO.IOException]::new('transport failed') }
+            { Get-GitHubArtifact -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                    -ArtifactId 41 -Headers @{} } |
+                Should -Throw '*transport failed*'
+        }
+
+        It 'propagates a statusless archive transport failure' {
+            Mock Invoke-WebRequest { throw [System.IO.IOException]::new('archive transport failed') }
+
+            { & $script:saveArchiveImplementation -Artifact $script:artifact `
+                    -Path (Join-Path $TestDrive 'transport.zip') -GitHubToken 'token' } |
+                Should -Throw '*archive transport failed*'
+        }
+
+        It 'bounds metadata and archive requests' {
+            Mock Invoke-RestMethod { $script:artifact }
+            Get-GitHubArtifact -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+                -ArtifactId 41 -Headers @{}
+            Should -Invoke Invoke-RestMethod -Times 1 -Exactly -ParameterFilter {
+                $TimeoutSec -eq $script:MetadataTimeoutSeconds
+            }
+
+            Mock Invoke-WebRequest {}
+            & $script:saveArchiveImplementation -Artifact $script:artifact `
+                -Path (Join-Path $TestDrive 'timeout.zip') -GitHubToken 'token'
+            Should -Invoke Invoke-WebRequest -Times 1 -Exactly -ParameterFilter {
+                $TimeoutSec -eq $script:ArchiveTimeoutSeconds
+            }
+        }
     }
 }

@@ -8,11 +8,12 @@ BeforeDiscovery {
 Describe 'Release-bearing paths' {
     It 'requires increments for runtime and consumer workflows' -ForEach @(
         'action.yml', 'release.json', 'scripts/Bootstrap.psm1', 'scripts/Invoke-ReleasePlan.ps1',
-        'scripts/New-Runtime.ps1', 'scripts/Wait-Artifact.ps1',
+        'scripts/New-Runtime.ps1', 'scripts/ArtifactDownload.psm1', 'scripts/Download-Artifact.ps1',
         '.github/workflows/release.yml', '.github/workflows/_release.yml',
         '.github/workflows/check.yml', '.github/workflows/identity-probe.yml',
         '.github/workflows/action-source.yml', '.github/workflows/identity.yml',
-        '.github/actions/restore-controller/action.yml', '.github/actions/install-checker/action.yml'
+        '.github/actions/restore-controller/action.yml', '.github/actions/install-checker/action.yml',
+        '.github/actions/artifact-download/action.yml'
     ) {
         Test-ReleaseBearingPath $_ | Should -BeTrue
     }
