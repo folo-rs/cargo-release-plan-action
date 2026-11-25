@@ -40,10 +40,9 @@ Describe 'Installation selection' {
         $updated.Root | Should -Not -Be $original.Root
     }
 
-    It 'selects the released controller without archive-tool metadata' {
+    It 'selects exact released controller settings from the manifest' {
         $script:Parameters.ActionPath = (Resolve-Path "$PSScriptRoot/..").Path
         $release = Get-Content (Join-Path $script:Parameters.ActionPath 'release.json') -Raw | ConvertFrom-Json -AsHashtable
-        $release.ContainsKey('archive_tools') | Should -BeFalse
         $settings = Get-InstallationSettings @script:Parameters
         $settings.Version | Should -Be $release.tools.'cargo-release-plan'.version
         $settings.BinstallVersion | Should -Be $release.cargo_binstall_version

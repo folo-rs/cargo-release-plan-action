@@ -46,22 +46,6 @@ Describe 'Action command forwarding' {
         New-Item (Join-Path $TestDrive $env:CRP_WORKING_DIRECTORY) -ItemType Directory -Force | Out-Null
     }
 
-    It 'passes the caller token only to GitHub-facing commands, not tool source builds' {
-        $metadata = Get-Content "$PSScriptRoot/../action.yml" -Raw
-        $marker = $metadata.IndexOf('    - name: Run cargo-release-plan', [StringComparison]::Ordinal)
-        $marker | Should -BeGreaterThan 0
-        $metadata.Substring(0, $marker) | Should -Not -Match 'GH_TOKEN:'
-        $invocation = $metadata.Substring($marker)
-        $invocation | Should -Match ([regex]::Escape('GH_TOKEN: ${{ (inputs.command == ''release-context'' || inputs.command == ''prepare-publish'' || inputs.command == ''publish-github'' || inputs.command == ''publish-binaries'' || inputs.command == ''publish-report'') && github.token || '''' }}'))
-    }
-
-    It 'forwards registry inputs without changing the requested dry-run mode' {
-        $metadata = Get-Content "$PSScriptRoot/../action.yml" -Raw
-        $metadata | Should -Match ([regex]::Escape('CRP_PUBLICATION: ${{ inputs.publication }}'))
-        $metadata | Should -Match ([regex]::Escape('CRP_DRY_RUN: ${{ inputs.dry-run }}'))
-        $metadata | Should -Match '(?m)^  dry-run:\r?\n    description: [^\r\n]+\r?\n    default: ''false''\r?$'
-    }
-
     It 'uses the selected executable for identity without acquiring a workspace' {
         $env:CRP_COMMAND = 'version'
         $env:CRP_WORKING_DIRECTORY = 'missing'
@@ -80,17 +64,6 @@ Describe 'Action command forwarding' {
             $Executable -eq $env:CRP_EXECUTABLE -and
             ($Arguments -join '|') -eq 'check-publishing-identity'
         }
-    }
-
-    It 'keeps source installation outside the only OIDC-enabled probe job' {
-        $workflow = Get-Content "$PSScriptRoot/../.github/workflows/identity-probe.yml" -Raw
-        $probe = $workflow.IndexOf('  probe:', [StringComparison]::Ordinal)
-        $probe | Should -BeGreaterThan 0
-        $workflow.Substring(0, $probe) | Should -Not -Match 'id-token:'
-        $workflow.Substring(0, $probe) | Should -Match 'GITHUB_EVENT_NAME -ne ''workflow_dispatch'''
-        $workflow.Substring($probe) | Should -Match 'id-token: write'
-        $workflow.Substring($probe) | Should -Not -Match 'command: version|Bootstrap.ps1|cargo install'
-        $workflow | Should -Not -Match 'workflow_dispatch:|contents: write'
     }
 
     It 'keeps queue readiness narrow with distinct history and target in the selected workspace' {

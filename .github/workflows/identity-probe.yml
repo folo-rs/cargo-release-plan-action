@@ -78,10 +78,14 @@ jobs:
           ref: ${{ needs.source.outputs.sha }}
           path: .release-plan-action
           persist-credentials: false
+      - uses: ./.release-plan-action/.github/actions/artifact-download
+        with:
+          artifact-ids: ${{ needs.controller.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/controller
       - uses: ./.release-plan-action/.github/actions/restore-controller
         id: tool
         with:
-          artifact-id: ${{ needs.controller.outputs.artifact-id }}
           version: ${{ needs.controller.outputs.version }}
       - name: Exchange then immediately revoke the credential
         shell: pwsh

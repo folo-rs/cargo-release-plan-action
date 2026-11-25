@@ -266,9 +266,25 @@ inventory for exact IDs, names and patterns, matching the official action's
 authenticated selector path. It retries absent artifacts and recognized transient
 metadata statuses within one bounded budget, while 401, 403, 410, expired
 artifacts and statusless transport errors remain visible. The official action
-owns archive transfer and extraction after metadata becomes visible and fresh.
+owns archive transfer, digest verification and extraction. Both transfer attempts
+use the immutable IDs selected by the preflight. A single ID uses the default
+same-run artifact service; multiple IDs use the authenticated run inventory
+because the same-run service can expose a narrower set.
 The preflight uses a twelve-attempt budget with five-second delays and a
 thirty-second timeout on each metadata request.
+
+After a failed transfer, the job uses its own token to GET each selected archive
+endpoint without following or logging the signed redirect. It retries transient
+statuses with the metadata retry limits per artifact. A redirect authorizes the
+next transfer attempt; it does not prove that the archive bytes are readable.
+If a single ID persistently returns 404, the final transfer retries the same-run
+service instead: the job cannot distinguish propagation delay from masked REST
+access denial. Each attempt extracts into its own temporary directory; the job
+moves only the completed transfer into the consumer's directory. For a selection
+of multiple receipts, a successful download must contain exactly the artifact
+directories named by the frozen IDs. A partial first transfer triggers recovery;
+a partial retry never reaches the report. Other permanent
+errors and failed final transfers remain failures.
 
 Pattern consumers derive their expected count from successful, explicitly named
 upload steps across every run attempt. The helper normalizes reusable-workflow job

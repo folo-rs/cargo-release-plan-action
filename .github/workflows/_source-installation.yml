@@ -98,10 +98,15 @@ jobs:
           name: crp-controller-canary-${{ github.run_id }}-${{ github.run_attempt }}
           path: ${{ runner.temp }}/controller.tar
           if-no-files-found: error
+      - uses: ./.github/actions/artifact-download
+        if: inputs.runner == 'ubuntu-latest'
+        with:
+          artifact-ids: ${{ steps.controller.outputs.artifact-id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/controller
       - uses: ./.github/actions/restore-controller
         if: inputs.runner == 'ubuntu-latest'
         with:
-          artifact-id: ${{ steps.controller.outputs.artifact-id }}
           version: ${{ steps.tool.outputs.version }}
       - name: Install the pinned external compatibility checker
         if: inputs.runner == 'ubuntu-latest'
