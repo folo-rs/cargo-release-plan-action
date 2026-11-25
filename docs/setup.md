@@ -44,7 +44,7 @@ Consumer publication and promised native artifact production are unchanged.
 
 `release.json` owns the independent `action_version`, exact `tools` versions,
 installation compiler, installer and native target/runner table. The selected
-combination is action 0.2.4, CRP 0.8.10, checker 0.50.0, Rust 1.98.1 and
+combination is action 0.2.5, CRP 0.8.10, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
 2f69a49f51f1986db02a1e89839997a2b769645e from the
 [paired Folo dependency candidate](https://github.com/folo-rs/folo/pull/972).
@@ -63,8 +63,8 @@ a supported Rust library API. Source-mode controller versions come from source
 metadata, not executable caches or the published CRP pin; its checker is still
 separately pinned.
 
-The independent action patch version selects latest hosted x64 images in
-distributed consumer workflows without changing CLI, schema or command contracts.
+The independent action patch version provides bounded visibility retries for
+same-run artifact transfers without changing CLI, schema or command contracts.
 Native source preparation installs the selected compiler without updating the
 shared Rustup executable. Planning and compatibility contracts
 include defining-type origins and explicit unsupported procedural-macro evidence.
@@ -120,7 +120,7 @@ is registered on main. It is not a first-merge bootstrap prerequisite. The same
 validation is already available through the PR checks:
 
 ```powershell
-gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.4
+gh workflow run validate-release.yml --ref CANDIDATE_BRANCH -f version=0.2.5
 ```
 
 ## Consumer permissions and environment
