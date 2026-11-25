@@ -46,7 +46,7 @@ Consumer publication and promised native artifact production are unchanged.
 installation compiler, installer and native target/runner table. The selected
 combination is action 0.3.0, CRP 0.9.0, checker 0.50.0, Rust 1.98.1 and
 cargo-binstall 1.23.0. Source canaries use exact CRP candidate source
-c1d6c6452b3123a604f1c8cd0f3ee7886d462765 from the
+5ea3bcad5684cca94021cc6125400f22f14a1172 from the
 [paired Folo compatibility candidate](https://github.com/folo-rs/folo/pull/987).
 This source pin does not establish published-package or archive availability.
 
