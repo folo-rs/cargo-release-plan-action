@@ -39,10 +39,11 @@ InModuleScope ArtifactPreflight {
                 return @($script:artifact)
             }
 
-            Invoke-ArtifactPreflight -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
+            $ids = @(Invoke-ArtifactPreflight -ApiUrl 'https://api.github.test' -Repository 'owner/repository' `
                 -RunId 7 -GitHubToken 'token' -ArtifactIds '41' `
-                -MaximumAttempts 2 -RetryDelaySeconds 0
+                -MaximumAttempts 2 -RetryDelaySeconds 0)
 
+            $ids | Should -Be @(41)
             Should -Invoke Select-GitHubArtifacts -Times 2 -Exactly
             Should -Invoke Start-Sleep -Times 1 -Exactly
         }
@@ -355,6 +356,56 @@ InModuleScope ArtifactPreflight {
             Should -Invoke Start-Sleep -Times 11 -Exactly -ParameterFilter {
                 $Seconds -eq 5
             }
+        }
+
+        It 'checks every archive with the workflow token and retries only the delayed redirect' {
+            Mock Get-ArtifactArchiveStatus {
+                if ($Uri -like '*/42/zip' -and $script:selectionCalls++ -eq 0) { return 404 }
+                return 302
+            }
+
+            Wait-ArtifactArchiveRedirect -ApiUrl 'https://api.github.test' -Repository owner/repo `
+                -GitHubToken 'job-token' -ArtifactIds 41,42 | Should -BeTrue
+
+            Should -Invoke Get-ArtifactArchiveStatus -Times 1 -Exactly -ParameterFilter {
+                $Uri -eq 'https://api.github.test/repos/owner/repo/actions/artifacts/41/zip' -and
+                    $Headers.Authorization -ceq 'Bearer job-token'
+            }
+            Should -Invoke Get-ArtifactArchiveStatus -Times 2 -Exactly -ParameterFilter {
+                $Uri -eq 'https://api.github.test/repos/owner/repo/actions/artifacts/42/zip' -and
+                    $Headers.Authorization -ceq 'Bearer job-token'
+            }
+            Should -Invoke Start-Sleep -Times 1 -Exactly
+        }
+
+        It 'chooses a final same-run transfer after persistent REST 404 for one immutable ID' {
+            Mock Get-ArtifactArchiveStatus { 404 }
+
+            Wait-ArtifactArchiveRedirect -ApiUrl 'https://api.github.test' -Repository owner/repo `
+                -GitHubToken 'job-token' -ArtifactIds 41 | Should -BeFalse
+            Should -Invoke Get-ArtifactArchiveStatus -Times 12 -Exactly
+            Should -Invoke Start-Sleep -Times 11 -Exactly -ParameterFilter { $Seconds -eq 5 }
+        }
+
+        It 'does not use a narrower artifact inventory for an incomplete multi-ID transfer' {
+            Mock Get-ArtifactArchiveStatus { 404 }
+            {
+                Wait-ArtifactArchiveRedirect -ApiUrl 'https://api.github.test' -Repository owner/repo `
+                    -GitHubToken 'job-token' -ArtifactIds 41,42
+            } | Should -Throw '*artifact 41*HTTP 404*attempt 12/12*'
+        }
+
+        It 'reports permanent archive status <Status> without waiting' -ForEach @(
+            @{ Status = 401 }
+            @{ Status = 403 }
+            @{ Status = 410 }
+        ) {
+            Mock Get-ArtifactArchiveStatus { $status }
+            {
+                Wait-ArtifactArchiveRedirect -ApiUrl 'https://api.github.test' -Repository owner/repo `
+                    -GitHubToken 'job-token' -ArtifactIds 41
+            } | Should -Throw "*HTTP $status*attempt 1/*"
+            Should -Invoke Start-Sleep -Times 0 -Exactly
         }
     }
 }

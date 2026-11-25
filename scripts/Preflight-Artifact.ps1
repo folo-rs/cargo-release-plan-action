@@ -19,6 +19,7 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $true
 
 Import-Module (Join-Path $PSScriptRoot 'ArtifactPreflight.psm1') -Force
-Invoke-ArtifactPreflight -ApiUrl $ApiUrl -Repository $Repository -RunId $RunId `
+$ids = @(Invoke-ArtifactPreflight -ApiUrl $ApiUrl -Repository $Repository -RunId $RunId `
     -GitHubToken $GitHubToken -ArtifactIds $ArtifactIds -Name $Name -Pattern $Pattern `
-    -ProducerSteps $ProducerSteps -AllowEmpty:$AllowEmpty
+    -ProducerSteps $ProducerSteps -AllowEmpty:$AllowEmpty)
+"ids=$($ids -join ',')" >> $env:GITHUB_OUTPUT

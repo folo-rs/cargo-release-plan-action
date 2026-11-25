@@ -73,7 +73,9 @@ Hosted runners follow latest stable image aliases where the alias preserves the
 target architecture. Linux and Windows ARM64 use architecture-specific labels
 until matching latest aliases exist.
 Workflow jobs preflight producer metadata and freshness within a bounded retry
-budget, then use the official artifact action for archive transfer. Pattern
+budget, then use the official artifact action for archive transfer. If the
+transfer fails, the job checks archive access with its own token before retrying
+the selected immutable IDs. Pattern
 consumers require every successful producer upload while accepting unchanged
 jobs inherited by a partial rerun. A persistent failure remains a failure;
 optional final-report evidence retains its explicitly non-fatal path.
